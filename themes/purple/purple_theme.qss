@@ -481,3 +481,103 @@ QTabBar::tab:left:selected {
 QTabBar::tab:right:selected {
     border-right: 2px solid #BB86FC;
 }
+
+/* Image Selection Widgets */
+QLabel.image-selector {
+    background-color: #44475c;
+    border: 2px solid #6f779a;
+    border-radius: 4px;
+}
+
+QLabel.image-selector:hover {
+    border: 2px solid #BB86FC;
+    background-color: #3a3d4d;
+}
+
+/* Selected state for image selectors */
+QLabel.image-selector[selected="true"] {
+    background-color: #6f779a;
+    border: 2px solid #BB86FC;
+}
+
+/* Profile/Type Items */
+QFrame.profile-item {
+    background-color: #44475c;
+    border: 2px solid #6f779a;
+    border-radius: 4px;
+}
+
+QFrame.profile-item:hover {
+    background-color: #3a3d4d;
+    border: 2px solid #8b95c0;
+}
+
+QFrame.profile-item[selected="true"] {
+    background-color: #6f779a;
+    border: 3px solid #BB86FC;
+}
+
+/* Blue variant for labels/images */
+QLabel.blue {
+    background-color: #1E2A4A;
+    color: #00c4fe;
+    border: 2px solid #00c4fe;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+QLabel.blue:hover {
+    background-color: #152038;
+    border: 2px solid #0099cc;
+}
+
+/* Grey variant for labels/images */
+QLabel.grey {
+    background-color: #44475c;
+    color: #bdbdc0;
+    border: 2px solid #6f779a;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+QLabel.grey:hover {
+    background-color: #3a3d4d;
+    border: 2px solid #8b95c0;
+}
+
+/* Dialog buttons styling */
+QDialogButtonBox QPushButton[text="OK"] {
+    background-color: #1d1f28;
+    color: #23c87b;
+    border: 2px solid #23c87b;
+}
+
+QDialogButtonBox QPushButton[text="OK"]:hover {
+    background-color: #000000;
+    color: #1a945b;
+    border: 2px solid #1a945b;
+}
+
+QDialogButtonBox QPushButton[text="OK"]:pressed {
+    background-color: #23c87b;
+    color: #1d1f28;
+    border: 2px solid #1d1f28;
+}
+
+QDialogButtonBox QPushButton[text="Cancel"] {
+    background-color: #1d1f28;
+    color: #ff4a7c;
+    border: 2px solid #ff4a7c;
+}
+
+QDialogButtonBox QPushButton[text="Cancel"]:hover {
+    background-color: #000000;
+    color: #cc3c64;
+    border: 2px solid #cc3c64;
+}
+
+QDialogButtonBox QPushButton[text="Cancel"]:pressed {
+    background-color: #ff4a7c;
+    color: #1d1f28;
+    border: 2px solid #1d1f28;
+}

@@ -526,25 +526,11 @@ class ProfileTab(QWidget):
         """Create default current.json file"""
         default_data = {
             "hinges": {
-                "types": {
-                    "Standard Hinge": {
-                        "name": "Standard Hinge",
-                        "image": None,
-                        "gcode": "G1 X{L1:10} Y{L2:20}\nG1 Z{L3:5}\nG0 X0 Y0",
-                        "preview": None
-                    }
-                },
+                "types": {},
                 "profiles": {}
             },
             "locks": {
-                "types": {
-                    "Pin Lock": {
-                        "name": "Pin Lock",
-                        "image": None,
-                        "gcode": "G1 X{P1:5} Y{P2:10}\nG1 Z{P3:2.5}",
-                        "preview": None
-                    }
-                },
+                "types": {},
                 "profiles": {}
             },
             "selected_hinge": None,

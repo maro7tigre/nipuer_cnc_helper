@@ -31,8 +31,8 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.generate_tab, "Generate Files")
         
         # Initially disable tabs 2 and 3
-        self.tabs.setTabEnabled(1, True)
-        self.tabs.setTabEnabled(2, True)
+        self.tabs.setTabEnabled(1, False)
+        self.tabs.setTabEnabled(2, False)
         
         # Connect signals
         self.profile_tab.profiles_selected.connect(self.on_profiles_selected)

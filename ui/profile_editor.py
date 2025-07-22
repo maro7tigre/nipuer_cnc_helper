@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (QDialog, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, 
                              QLabel, QScrollArea, QGridLayout, QFrame, QLineEdit,
                              QTextEdit, QDialogButtonBox, QFileDialog, QMessageBox,
-                             QSplitter)
+                             QSplitter, QSizePolicy)
 from PySide6.QtCore import Signal, Qt, QSize, QRegularExpression
 from PySide6.QtGui import QPixmap, QPainter, QColor, QRegularExpressionValidator, QDoubleValidator
 import re
@@ -592,6 +592,10 @@ class ProfileEditor(QDialog):
         content_layout = QHBoxLayout(content_widget)
         layout.addWidget(content_widget, 1)
         
+        # Splitter
+        splitter = QSplitter(Qt.Horizontal)
+        content_layout.addWidget(splitter)
+        
         # Left side - Variables and profile image
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
@@ -610,7 +614,7 @@ class ProfileEditor(QDialog):
         self.variable_editor.setVisible(False)
         left_layout.addWidget(self.variable_editor, 1)
         
-        content_layout.addWidget(left_widget)
+        splitter.addWidget(left_widget)
         
         # Right side - Profile name and preview
         right_widget = QWidget()
@@ -626,14 +630,21 @@ class ProfileEditor(QDialog):
         # Type preview
         right_layout.addWidget(QLabel("Type Preview:"))
         self.preview_image_label = QLabel()
-        self.preview_image_label.setFixedSize(300, 300)
+        self.preview_image_label.setSizePolicy(
+            QSizePolicy.Expanding,
+            QSizePolicy.Expanding
+        )
+        self.preview_image_label.setScaledContents(True)
         self.preview_image_label.setAlignment(Qt.AlignCenter)
         self.preview_image_label.setProperty("class", "image-selector")
         self.preview_image_label.setText("Select a type to see preview")
-        right_layout.addWidget(self.preview_image_label, alignment=Qt.AlignCenter)
+        right_layout.addWidget(self.preview_image_label)
         
         right_layout.addStretch()
-        content_layout.addWidget(right_widget)
+        splitter.addWidget(right_widget)
+        
+        splitter.setStretchFactor(0, 1)   # left
+        splitter.setStretchFactor(1, 3)   # right
         
         # Dialog buttons
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
