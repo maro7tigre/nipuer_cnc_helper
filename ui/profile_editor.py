@@ -42,7 +42,7 @@ class ScaledImageLabel(QLabel):
 
 
 class ClickableImageLabel(QLabel):
-    """Clickable image label that follows theme"""
+    """Clickable image label with Python-based styling"""
     clicked = Signal()
     
     def __init__(self, size=(100, 100)):
@@ -50,8 +50,22 @@ class ClickableImageLabel(QLabel):
         self.setFixedSize(*size)
         self.setAlignment(Qt.AlignCenter)
         self.setCursor(Qt.PointingHandCursor)
-        self.setProperty("class", "image-selector")
         self.setScaledContents(False)
+        self.apply_default_style()
+        
+    def apply_default_style(self):
+        """Apply default styling"""
+        self.setStyleSheet("""
+            ClickableImageLabel {
+                background-color: #44475c;
+                border: 2px solid #6f779a;
+                border-radius: 4px;
+            }
+            ClickableImageLabel:hover {
+                background-color: #3a3d4d;
+                border: 2px solid #BB86FC;
+            }
+        """)
         
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -59,21 +73,20 @@ class ClickableImageLabel(QLabel):
 
 
 class TypeItem(QFrame):
-    """Individual type item widget for horizontal scroll"""
+    """Individual type item widget with Python-controlled styling"""
     clicked = Signal(str)
     edit_requested = Signal(str)
     duplicate_requested = Signal(str)
     delete_requested = Signal(str)
     
-    # MARK: - Initialization
     def __init__(self, name, image_path=None, is_add_button=False):
         super().__init__()
         self.name = name
         self.image_path = image_path
         self.is_add_button = is_add_button
         self.selected = False
+        self._is_hovered = False
         
-        self.setProperty("class", "profile-item")
         self.setFixedSize(100, 120)
         self.setCursor(Qt.PointingHandCursor)
         
@@ -118,18 +131,56 @@ class TypeItem(QFrame):
         self.image_label.setPixmap(pixmap)
     
     def set_selected(self, selected):
-        """Update selection state"""
+        """Update selection state with immediate styling"""
         self.selected = selected
-        self.setProperty("selected", str(selected).lower())
-        self.style().unpolish(self)
-        self.style().polish(self)
-        self.update()
+        self.update_style()
     
     def update_style(self):
-        """Update visual styling"""
-        self.set_selected(self.selected)
+        """Apply styling based on current state"""
+        if self.selected:
+            # Selected state - green theme
+            self.setStyleSheet("""
+                TypeItem {
+                    background-color: #1A2E20;
+                    border: 3px solid #23c87b;
+                    border-radius: 4px;
+                }
+            """)
+        elif self._is_hovered:
+            # Hover state
+            self.setStyleSheet("""
+                TypeItem {
+                    background-color: #3a3d4d;
+                    border: 2px solid #8b95c0;
+                    border-radius: 4px;
+                }
+            """)
+        else:
+            # Default state
+            self.setStyleSheet("""
+                TypeItem {
+                    background-color: #44475c;
+                    border: 2px solid #6f779a;
+                    border-radius: 4px;
+                }
+            """)
+        
+        # Force immediate update
+        self.update()
     
-    # MARK: - Event Handlers
+    def enterEvent(self, event):
+        """Handle mouse enter"""
+        if not self.selected:  # Don't override selected state
+            self._is_hovered = True
+            self.update_style()
+        super().enterEvent(event)
+    
+    def leaveEvent(self, event):
+        """Handle mouse leave"""
+        self._is_hovered = False
+        self.update_style()
+        super().leaveEvent(event)
+    
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.clicked.emit(self.name)
@@ -157,11 +208,10 @@ class TypeItem(QFrame):
 
 
 class TypeSelector(QWidget):
-    """Horizontal scrollable type selector"""
-    type_selected = Signal(dict)  # Emits type data
-    types_modified = Signal()  # Emits when types are added/edited/deleted
+    """Horizontal scrollable type selector with Python styling"""
+    type_selected = Signal(dict)
+    types_modified = Signal()
     
-    # MARK: - Initialization
     def __init__(self, profile_type):
         super().__init__()
         self.profile_type = profile_type  # "hinge" or "lock"
@@ -178,7 +228,7 @@ class TypeSelector(QWidget):
         
         # Title
         title = QLabel(f"{self.profile_type.capitalize()} Types")
-        title.setStyleSheet("font-weight: bold; padding: 5px;")
+        title.setStyleSheet("QLabel { font-weight: bold; padding: 5px; color: #ffffff; background-color: transparent; }")
         layout.addWidget(title)
         
         # Scroll area
@@ -187,9 +237,17 @@ class TypeSelector(QWidget):
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setFixedHeight(150)
         scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("""
+            QScrollArea {
+                background-color: #1d1f28;
+                border: 1px solid #6f779a;
+                border-radius: 4px;
+            }
+        """)
         
         # Container
         container = QWidget()
+        container.setStyleSheet("QWidget { background-color: #1d1f28; }")
         self.items_layout = QHBoxLayout(container)
         self.items_layout.setSpacing(10)
         self.items_layout.setContentsMargins(5, 5, 5, 5)
@@ -200,7 +258,6 @@ class TypeSelector(QWidget):
         # Add initial "+" button
         self.add_type_button()
     
-    # MARK: - Type Management
     def add_type_button(self):
         """Add the '+' button"""
         add_item = TypeItem("Add", is_add_button=True)
@@ -238,7 +295,7 @@ class TypeSelector(QWidget):
         self.items_layout.addWidget(item)
     
     def on_type_clicked(self, name):
-        """Handle type selection"""
+        """Handle type selection with explicit state management"""
         # Clear previous selection
         if self.selected_type and self.selected_type in self.type_items:
             self.type_items[self.selected_type].set_selected(False)
@@ -249,7 +306,6 @@ class TypeSelector(QWidget):
             self.type_items[name].set_selected(True)
             self.type_selected.emit(self.types[name])
     
-    # MARK: - Type Operations
     def add_new_type(self):
         """Create new type"""
         dialog = TypeEditor(self.profile_type)
@@ -304,9 +360,8 @@ class TypeSelector(QWidget):
 
 
 class TypeEditor(QDialog):
-    """Type editor dialog"""
+    """Type editor dialog with improved styling"""
     
-    # MARK: - Initialization
     def __init__(self, profile_type, type_data=None, parent=None):
         super().__init__(parent)
         self.profile_type = profile_type
@@ -317,6 +372,51 @@ class TypeEditor(QDialog):
         self.setWindowTitle(f"{'Edit' if type_data else 'New'} {profile_type.capitalize()} Type")
         self.setModal(True)
         self.resize(800, 600)
+        
+        # Apply dialog styling
+        self.setStyleSheet("""
+            TypeEditor {
+                background-color: #282a36;
+                color: #ffffff;
+            }
+            TypeEditor QLabel {
+                color: #ffffff;
+                background-color: transparent;
+            }
+            TypeEditor QLineEdit {
+                background-color: #1d1f28;
+                color: #ffffff;
+                border: 1px solid #6f779a;
+                border-radius: 4px;
+                padding: 4px;
+            }
+            TypeEditor QLineEdit:focus {
+                border: 1px solid #BB86FC;
+            }
+            TypeEditor QTextEdit {
+                background-color: #1d1f28;
+                color: #ffffff;
+                border: 1px solid #6f779a;
+                border-radius: 4px;
+            }
+            TypeEditor QPushButton {
+                background-color: #1d1f28;
+                color: #BB86FC;
+                border: 2px solid #BB86FC;
+                border-radius: 4px;
+                padding: 6px 12px;
+                min-width: 80px;
+            }
+            TypeEditor QPushButton:hover {
+                background-color: #000000;
+                color: #9965DA;
+                border: 2px solid #9965DA;
+            }
+            TypeEditor QPushButton:pressed {
+                background-color: #BB86FC;
+                color: #1d1f28;
+            }
+        """)
         
         self.setup_ui()
         self.load_data()
@@ -391,7 +491,6 @@ class TypeEditor(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
     
-    # MARK: - Data Management
     def load_data(self):
         """Load existing type data"""
         if self.type_data:
@@ -417,7 +516,6 @@ class TypeEditor(QDialog):
             "preview": self.preview_path
         }
     
-    # MARK: - File Operations
     def select_image(self):
         """Select type image"""
         default_dir = os.path.join("profiles", "images")
@@ -469,7 +567,6 @@ class TypeEditor(QDialog):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save file: {str(e)}")
     
-    # MARK: - UI Helpers
     def set_placeholder_image(self):
         """Set placeholder for type image"""
         pixmap = QPixmap(150, 150)
@@ -492,14 +589,42 @@ class TypeEditor(QDialog):
 
 
 class VariableEditor(QWidget):
-    """Vertical scrollable variable editor"""
+    """Vertical scrollable variable editor with Python styling"""
     
-    # MARK: - Initialization
     def __init__(self):
         super().__init__()
         self.variables = {}  # var_name -> (default_value, line_edit)
         
         self.setup_ui()
+        self.apply_styling()
+    
+    def apply_styling(self):
+        """Apply Python-based styling"""
+        self.setStyleSheet("""
+            VariableEditor {
+                background-color: #282a36;
+                color: #ffffff;
+            }
+            VariableEditor QLabel {
+                color: #ffffff;
+                background-color: transparent;
+            }
+            VariableEditor QLineEdit {
+                background-color: #1d1f28;
+                color: #ffffff;
+                border: 1px solid #6f779a;
+                border-radius: 4px;
+                padding: 4px;
+            }
+            VariableEditor QLineEdit:focus {
+                border: 1px solid #BB86FC;
+            }
+            VariableEditor QScrollArea {
+                background-color: #1d1f28;
+                border: 1px solid #6f779a;
+                border-radius: 4px;
+            }
+        """)
     
     def setup_ui(self):
         """Setup UI components"""
@@ -508,7 +633,7 @@ class VariableEditor(QWidget):
         
         # Title
         self.title_label = QLabel("Variables")
-        self.title_label.setStyleSheet("font-weight: bold; padding: 5px;")
+        self.title_label.setStyleSheet("QLabel { font-weight: bold; padding: 5px; color: #ffffff; background-color: transparent; }")
         layout.addWidget(self.title_label)
         
         # Scroll area
@@ -526,7 +651,6 @@ class VariableEditor(QWidget):
         scroll.setWidget(container)
         layout.addWidget(scroll, 1)
     
-    # MARK: - Variable Management
     def update_variables(self, gcode):
         """Extract variables from gcode and update UI"""
         # Clear existing
@@ -594,9 +718,8 @@ class VariableEditor(QWidget):
 
 
 class ProfileEditor(QDialog):
-    """Main profile editor dialog"""
+    """Main profile editor dialog with Python styling"""
     
-    # MARK: - Initialization
     def __init__(self, profile_type, profile_data=None, parent=None):
         super().__init__(parent)
         self.profile_type = profile_type  # "hinge" or "lock"
@@ -607,6 +730,28 @@ class ProfileEditor(QDialog):
         self.setWindowTitle(f"{'Edit' if profile_data else 'New'} {profile_type.capitalize()} Profile")
         self.setModal(True)
         self.resize(900, 700)
+        
+        # Apply dialog styling
+        self.setStyleSheet("""
+            ProfileEditor {
+                background-color: #282a36;
+                color: #ffffff;
+            }
+            ProfileEditor QLabel {
+                color: #ffffff;
+                background-color: transparent;
+            }
+            ProfileEditor QLineEdit {
+                background-color: #1d1f28;
+                color: #ffffff;
+                border: 1px solid #6f779a;
+                border-radius: 4px;
+                padding: 4px;
+            }
+            ProfileEditor QLineEdit:focus {
+                border: 1px solid #BB86FC;
+            }
+        """)
         
         self.setup_ui()
         self.load_data()
@@ -665,10 +810,17 @@ class ProfileEditor(QDialog):
         # Use ScaledImageLabel for preview to expand and maintain aspect ratio
         self.preview_image_label = ScaledImageLabel()
         self.preview_image_label.setAlignment(Qt.AlignCenter)
-        self.preview_image_label.setProperty("class", "image-selector")
         self.preview_image_label.setText("Select a type to see preview")
-        self.preview_image_label.setMinimumHeight(200)  # Minimum height for better layout
-        right_layout.addWidget(self.preview_image_label, 1)  # Give it stretch factor
+        self.preview_image_label.setMinimumHeight(200)
+        self.preview_image_label.setStyleSheet("""
+            QLabel {
+                background-color: #44475c;
+                border: 2px solid #6f779a;
+                border-radius: 4px;
+                color: #bdbdc0;
+            }
+        """)
+        right_layout.addWidget(self.preview_image_label, 1)
         
         splitter.addWidget(right_widget)
         
@@ -677,11 +829,29 @@ class ProfileEditor(QDialog):
         
         # Dialog buttons
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.setStyleSheet("""
+            QDialogButtonBox QPushButton {
+                background-color: #1d1f28;
+                color: #23c87b;
+                border: 2px solid #23c87b;
+                border-radius: 4px;
+                padding: 6px 12px;
+                min-width: 80px;
+            }
+            QDialogButtonBox QPushButton:hover {
+                background-color: #000000;
+                color: #1a945b;
+                border: 2px solid #1a945b;
+            }
+            QDialogButtonBox QPushButton:pressed {
+                background-color: #23c87b;
+                color: #1d1f28;
+            }
+        """)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
     
-    # MARK: - Data Management
     def load_data(self):
         """Load existing profile data"""
         if self.profile_data:
@@ -713,7 +883,6 @@ class ProfileEditor(QDialog):
         }
         return data
     
-    # MARK: - Event Handlers
     def on_type_selected(self, type_data):
         """Handle type selection"""
         self.current_type = type_data
@@ -748,7 +917,6 @@ class ProfileEditor(QDialog):
             pixmap = QPixmap(filename)
             self.profile_image_label.setPixmap(pixmap.scaled(150, 150, Qt.KeepAspectRatio))
     
-    # MARK: - UI Helpers
     def set_profile_placeholder(self):
         """Set placeholder for profile image"""
         pixmap = QPixmap(150, 150)

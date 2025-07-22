@@ -10,21 +10,20 @@ from .profile_editor import ProfileEditor, TypeSelector
 
 
 class ProfileItem(QFrame):
-    """Individual profile item widget"""
+    """Individual profile item widget with Python-controlled styling"""
     clicked = Signal(str)
     edit_requested = Signal(str)
     duplicate_requested = Signal(str)
     delete_requested = Signal(str)
     
-    # MARK: - Initialization
     def __init__(self, name, profile_data=None, is_add_button=False):
         super().__init__()
         self.name = name
         self.profile_data = profile_data or {}
         self.is_add_button = is_add_button
         self.selected = False
+        self._is_hovered = False
         
-        self.setProperty("class", "profile-item")
         self.setFixedSize(120, 140)
         self.setCursor(Qt.PointingHandCursor)
         
@@ -47,12 +46,12 @@ class ProfileItem(QFrame):
         self.name_label = QLabel(name)
         self.name_label.setAlignment(Qt.AlignCenter)
         self.name_label.setWordWrap(True)
+        self.name_label.setStyleSheet("QLabel { color: #ffffff; background-color: transparent; }")
         layout.addWidget(self.name_label)
         
         # Set initial style
         self.update_style()
     
-    # MARK: - UI Updates
     def update_image(self):
         """Update the displayed image"""
         pixmap = QPixmap(100, 100)
@@ -72,6 +71,7 @@ class ProfileItem(QFrame):
             else:
                 pixmap.fill(QColor("#44475c"))
                 painter = QPainter(pixmap)
+                painter.setPen(QColor("#bdbdc0"))
                 painter.drawText(pixmap.rect(), Qt.AlignCenter, "📄")
                 painter.end()
         else:
@@ -85,18 +85,56 @@ class ProfileItem(QFrame):
         self.image_label.setPixmap(pixmap)
     
     def set_selected(self, selected):
-        """Update selection state"""
+        """Update selection state with immediate styling"""
         self.selected = selected
-        self.setProperty("selected", str(selected).lower())
-        self.style().unpolish(self)
-        self.style().polish(self)
-        self.update()
+        self.update_style()
     
     def update_style(self):
-        """Update visual styling based on state"""
-        self.set_selected(self.selected)
+        """Apply styling based on current state"""
+        if self.selected:
+            # Selected state - green theme
+            self.setStyleSheet("""
+                ProfileItem {
+                    background-color: #1A2E20;
+                    border: 3px solid #23c87b;
+                    border-radius: 4px;
+                }
+            """)
+        elif self._is_hovered:
+            # Hover state
+            self.setStyleSheet("""
+                ProfileItem {
+                    background-color: #3a3d4d;
+                    border: 2px solid #8b95c0;
+                    border-radius: 4px;
+                }
+            """)
+        else:
+            # Default state
+            self.setStyleSheet("""
+                ProfileItem {
+                    background-color: #44475c;
+                    border: 2px solid #6f779a;
+                    border-radius: 4px;
+                }
+            """)
+        
+        # Force immediate update
+        self.update()
     
-    # MARK: - Event Handlers
+    def enterEvent(self, event):
+        """Handle mouse enter"""
+        if not self.selected:  # Don't override selected state
+            self._is_hovered = True
+            self.update_style()
+        super().enterEvent(event)
+    
+    def leaveEvent(self, event):
+        """Handle mouse leave"""
+        self._is_hovered = False
+        self.update_style()
+        super().leaveEvent(event)
+    
     def mousePressEvent(self, event):
         """Handle mouse clicks"""
         if event.button() == Qt.LeftButton:
@@ -108,6 +146,21 @@ class ProfileItem(QFrame):
     def show_context_menu(self, pos):
         """Show right-click context menu"""
         menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #1d1f28;
+                color: #ffffff;
+                border: 1px solid #6f779a;
+                border-radius: 4px;
+            }
+            QMenu::item {
+                background-color: transparent;
+                padding: 6px 16px;
+            }
+            QMenu::item:selected {
+                background-color: #6f779a;
+            }
+        """)
         
         edit_action = menu.addAction("Edit")
         duplicate_action = menu.addAction("Duplicate")
@@ -125,11 +178,10 @@ class ProfileItem(QFrame):
 
 
 class ProfileGrid(QScrollArea):
-    """Scrollable grid container for profile items"""
+    """Scrollable grid container for profile items with Python styling"""
     selection_changed = Signal(str)
-    data_modified = Signal()  # Emitted when profiles are added/edited/deleted
+    data_modified = Signal()
     
-    # MARK: - Initialization
     def __init__(self, profile_type):
         super().__init__()
         self.profile_type = profile_type  # "hinge" or "lock"
@@ -138,13 +190,47 @@ class ProfileGrid(QScrollArea):
         self.profile_items = {}  # name -> ProfileItem widget
         self.types = {}  # Store types data
         
-        # Setup scroll area
+        # Setup scroll area styling
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setStyleSheet("""
+            ProfileGrid {
+                background-color: #282a36;
+                border: 1px solid #44475c;
+                border-radius: 4px;
+            }
+            ProfileGrid QScrollBar:vertical {
+                background-color: #1d1f28;
+                width: 12px;
+                margin: 0px;
+            }
+            ProfileGrid QScrollBar::handle:vertical {
+                background-color: #6f779a;
+                min-height: 20px;
+                border-radius: 6px;
+            }
+            ProfileGrid QScrollBar::add-line:vertical, ProfileGrid QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            ProfileGrid QScrollBar:horizontal {
+                background-color: #1d1f28;
+                height: 12px;
+                margin: 0px;
+            }
+            ProfileGrid QScrollBar::handle:horizontal {
+                background-color: #6f779a;
+                min-width: 20px;
+                border-radius: 6px;
+            }
+            ProfileGrid QScrollBar::add-line:horizontal, ProfileGrid QScrollBar::sub-line:horizontal {
+                width: 0px;
+            }
+        """)
         
         # Container widget
         container = QWidget()
+        container.setStyleSheet("QWidget { background-color: #282a36; }")
         self.setWidget(container)
         
         # Main layout
@@ -152,7 +238,15 @@ class ProfileGrid(QScrollArea):
         
         # Title
         title = QLabel(f"{profile_type.capitalize()} Profiles")
-        title.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;")
+        title.setStyleSheet("""
+            QLabel {
+                font-size: 16px; 
+                font-weight: bold; 
+                padding: 10px; 
+                color: #ffffff;
+                background-color: transparent;
+            }
+        """)
         main_layout.addWidget(title)
         
         # Grid layout for items
@@ -161,7 +255,6 @@ class ProfileGrid(QScrollArea):
         main_layout.addLayout(self.grid_layout)
         main_layout.addStretch()
     
-    # MARK: - Profile Management
     def populate_profiles(self):
         """Load and display profiles"""
         # Clear existing items
@@ -238,7 +331,6 @@ class ProfileGrid(QScrollArea):
                 col = 0
                 row += 1
     
-    # MARK: - Profile Operations
     def add_new_profile(self):
         """Create new profile"""
         dialog = ProfileEditor(self.profile_type)
@@ -353,24 +445,23 @@ class ProfileGrid(QScrollArea):
                 self.selected_profile = None
                 self.selection_changed.emit("")
     
-    # MARK: - Selection Handling
     def on_item_clicked(self, name):
-        """Handle profile selection"""
-        # Update previous selection
+        """Handle profile selection with explicit state management"""
+        # Clear previous selection
         if self.selected_profile and self.selected_profile in self.profile_items:
             self.profile_items[self.selected_profile].set_selected(False)
         
-        # Update new selection
+        # Skip add button
         if name == "Add":
             return
         
+        # Set new selection
         self.selected_profile = name
         if name in self.profile_items:
             self.profile_items[name].set_selected(True)
         
         self.selection_changed.emit(name)
     
-    # MARK: - Data Management
     def get_profiles_data(self):
         """Get all profiles data for saving"""
         return self.profiles.copy()
@@ -386,11 +477,10 @@ class ProfileGrid(QScrollArea):
 
 
 class ProfileTab(QWidget):
-    """Main profile selection tab with split view"""
+    """Main profile selection tab with split view and Python styling"""
     profiles_selected = Signal(str, str)  # hinge_profile, lock_profile
     next_clicked = Signal()
     
-    # MARK: - Initialization
     def __init__(self):
         super().__init__()
         self.selected_hinge = None
@@ -403,8 +493,53 @@ class ProfileTab(QWidget):
         os.makedirs(self.saved_dir, exist_ok=True)
         
         self.setup_ui()
+        self.apply_styling()
         self.connect_signals()
         self.load_current_profiles()
+    
+    def apply_styling(self):
+        """Apply Python-based styling to the tab"""
+        self.setStyleSheet("""
+            ProfileTab {
+                background-color: #282a36;
+                color: #ffffff;
+            }
+            ProfileTab QPushButton {
+                background-color: #1d1f28;
+                color: #BB86FC;
+                border: 2px solid #BB86FC;
+                border-radius: 4px;
+                padding: 6px 12px;
+                min-width: 80px;
+            }
+            ProfileTab QPushButton:hover {
+                background-color: #000000;
+                color: #9965DA;
+                border: 2px solid #9965DA;
+            }
+            ProfileTab QPushButton:pressed {
+                background-color: #BB86FC;
+                color: #1d1f28;
+            }
+            ProfileTab QPushButton:disabled {
+                background-color: #1d1f28;
+                color: #6f779a;
+                border: 2px solid #6f779a;
+            }
+            ProfileTab QLabel {
+                color: #ffffff;
+                background-color: transparent;
+            }
+            ProfileTab QSplitter::handle {
+                background-color: #44475c;
+            }
+            ProfileTab QSplitter::handle:horizontal {
+                width: 4px;
+            }
+            ProfileTab QSplitter::handle:hover {
+                background-color: #BB86FC;
+            }
+        """)
     
     def setup_ui(self):
         """Initialize user interface"""
@@ -446,12 +581,38 @@ class ProfileTab(QWidget):
         layout.addLayout(bottom_layout)
         
         self.selection_label = QLabel("Selected: [Hinge: None] [Lock: None]")
+        self.selection_label.setStyleSheet("QLabel { font-weight: bold; padding: 5px; color: #ffffff; background-color: transparent; }")
         bottom_layout.addWidget(self.selection_label)
         
         bottom_layout.addStretch()
         
         self.next_button = QPushButton("Next →")
         self.next_button.setEnabled(False)
+        # Style the next button as green when enabled
+        self.next_button.setStyleSheet("""
+            QPushButton {
+                background-color: #1d1f28;
+                color: #23c87b;
+                border: 2px solid #23c87b;
+                border-radius: 4px;
+                padding: 6px 12px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #000000;
+                color: #1a945b;
+                border: 2px solid #1a945b;
+            }
+            QPushButton:pressed {
+                background-color: #23c87b;
+                color: #1d1f28;
+            }
+            QPushButton:disabled {
+                background-color: #1d1f28;
+                color: #6f779a;
+                border: 2px solid #6f779a;
+            }
+        """)
         bottom_layout.addWidget(self.next_button)
     
     def connect_signals(self):
@@ -462,7 +623,6 @@ class ProfileTab(QWidget):
         self.lock_grid.data_modified.connect(self.save_current_profiles)
         self.next_button.clicked.connect(self.on_next_clicked)
     
-    # MARK: - Selection Handling
     def on_hinge_selected(self, name):
         """Handle hinge profile selection"""
         self.selected_hinge = name if name else None
@@ -491,7 +651,6 @@ class ProfileTab(QWidget):
             self.profiles_selected.emit(self.selected_hinge, self.selected_lock)
             self.next_clicked.emit()
     
-    # MARK: - File Operations
     def load_current_profiles(self):
         """Load current.json on startup"""
         if os.path.exists(self.current_file):
