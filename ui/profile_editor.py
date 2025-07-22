@@ -9,6 +9,9 @@ import json
 import os
 from datetime import datetime
 
+# Import the new G-code editor
+from gcode_ide import GCodeEditor
+
 
 class ScaledImageLabel(QLabel):
     """Image label that maintains aspect ratio when scaling to fill available space"""
@@ -360,7 +363,7 @@ class TypeSelector(QWidget):
 
 
 class TypeEditor(QDialog):
-    """Type editor dialog with improved styling"""
+    """Type editor dialog with improved styling and maximize/minimize buttons"""
     
     def __init__(self, profile_type, type_data=None, parent=None):
         super().__init__(parent)
@@ -372,6 +375,11 @@ class TypeEditor(QDialog):
         self.setWindowTitle(f"{'Edit' if type_data else 'New'} {profile_type.capitalize()} Type")
         self.setModal(True)
         self.resize(800, 600)
+        
+        # Enable maximize/minimize buttons
+        self.setWindowFlags(Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | 
+                           Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | 
+                           Qt.WindowCloseButtonHint)
         
         # Apply dialog styling
         self.setStyleSheet("""
@@ -392,12 +400,6 @@ class TypeEditor(QDialog):
             }
             TypeEditor QLineEdit:focus {
                 border: 1px solid #BB86FC;
-            }
-            TypeEditor QTextEdit {
-                background-color: #1d1f28;
-                color: #ffffff;
-                border: 1px solid #6f779a;
-                border-radius: 4px;
             }
             TypeEditor QPushButton {
                 background-color: #1d1f28;
@@ -478,8 +480,13 @@ class TypeEditor(QDialog):
         save_btn.clicked.connect(self.save_gcode)
         gcode_header.addWidget(save_btn)
         
-        self.gcode_edit = QTextEdit()
+        # Use the new G-code editor instead of QTextEdit
+        self.gcode_edit = GCodeEditor(self)
         self.gcode_edit.setPlaceholderText("Enter G-code with variables like {L1}, {L2:10}, etc.")
+        
+        # Connect to variable changes
+        self.gcode_edit.variables_changed.connect(self.on_variables_changed)
+        
         right_layout.addWidget(self.gcode_edit)
         
         content_split.addWidget(right_widget)
@@ -490,6 +497,12 @@ class TypeEditor(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+    
+    def on_variables_changed(self, variables):
+        """Handle {} variables detected in G-code"""
+        if variables:
+            var_names = [f"{{{name}{':' + default if default else ''}}}" for name, default in variables]
+            print(f"Variables detected: {var_names}")
     
     def load_data(self):
         """Load existing type data"""
@@ -513,7 +526,8 @@ class TypeEditor(QDialog):
             "name": self.name_edit.text(),
             "gcode": self.gcode_edit.toPlainText(),
             "image": self.image_path,
-            "preview": self.preview_path
+            "preview": self.preview_path,
+            "variables": self.gcode_edit.getVariables()
         }
     
     def select_image(self):
@@ -589,7 +603,7 @@ class TypeEditor(QDialog):
 
 
 class VariableEditor(QWidget):
-    """Vertical scrollable variable editor with Python styling"""
+    """Vertical scrollable {} variable editor with Python styling"""
     
     def __init__(self):
         super().__init__()
@@ -718,7 +732,7 @@ class VariableEditor(QWidget):
 
 
 class ProfileEditor(QDialog):
-    """Main profile editor dialog with Python styling"""
+    """Main profile editor dialog with Python styling and maximize/minimize buttons"""
     
     def __init__(self, profile_type, profile_data=None, parent=None):
         super().__init__(parent)
@@ -730,6 +744,11 @@ class ProfileEditor(QDialog):
         self.setWindowTitle(f"{'Edit' if profile_data else 'New'} {profile_type.capitalize()} Profile")
         self.setModal(True)
         self.resize(900, 700)
+        
+        # Enable maximize/minimize buttons
+        self.setWindowFlags(Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | 
+                           Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | 
+                           Qt.WindowCloseButtonHint)
         
         # Apply dialog styling
         self.setStyleSheet("""
@@ -887,7 +906,8 @@ class ProfileEditor(QDialog):
         """Handle type selection"""
         self.current_type = type_data
         
-        # Update variables
+        # Update variables using variables from type
+        variables = type_data.get("variables", [])
         self.variable_editor.update_variables(type_data.get("gcode", ""))
         
         # Load saved variable values if editing
