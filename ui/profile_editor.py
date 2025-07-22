@@ -10,6 +10,37 @@ import os
 from datetime import datetime
 
 
+class ScaledImageLabel(QLabel):
+    """Image label that maintains aspect ratio when scaling to fill available space"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setScaledContents(False)
+        self.setAlignment(Qt.AlignCenter)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._pixmap = None
+    
+    def setPixmap(self, pixmap):
+        """Set pixmap and store original for scaling"""
+        self._pixmap = pixmap
+        self.updatePixmap()
+    
+    def updatePixmap(self):
+        """Update displayed pixmap based on current size"""
+        if self._pixmap and not self._pixmap.isNull():
+            scaled = self._pixmap.scaled(
+                self.size(), 
+                Qt.KeepAspectRatio, 
+                Qt.SmoothTransformation
+            )
+            super().setPixmap(scaled)
+    
+    def resizeEvent(self, event):
+        """Handle resize to update pixmap scaling"""
+        super().resizeEvent(event)
+        self.updatePixmap()
+
+
 class ClickableImageLabel(QLabel):
     """Clickable image label that follows theme"""
     clicked = Signal()
@@ -208,9 +239,11 @@ class TypeSelector(QWidget):
     
     def on_type_clicked(self, name):
         """Handle type selection"""
+        # Clear previous selection
         if self.selected_type and self.selected_type in self.type_items:
             self.type_items[self.selected_type].set_selected(False)
         
+        # Set new selection
         self.selected_type = name
         if name in self.type_items:
             self.type_items[name].set_selected(True)
@@ -629,22 +662,18 @@ class ProfileEditor(QDialog):
         
         # Type preview
         right_layout.addWidget(QLabel("Type Preview:"))
-        self.preview_image_label = QLabel()
-        self.preview_image_label.setSizePolicy(
-            QSizePolicy.Expanding,
-            QSizePolicy.Expanding
-        )
-        self.preview_image_label.setScaledContents(True)
+        # Use ScaledImageLabel for preview to expand and maintain aspect ratio
+        self.preview_image_label = ScaledImageLabel()
         self.preview_image_label.setAlignment(Qt.AlignCenter)
         self.preview_image_label.setProperty("class", "image-selector")
         self.preview_image_label.setText("Select a type to see preview")
-        right_layout.addWidget(self.preview_image_label)
+        self.preview_image_label.setMinimumHeight(200)  # Minimum height for better layout
+        right_layout.addWidget(self.preview_image_label, 1)  # Give it stretch factor
         
-        right_layout.addStretch()
         splitter.addWidget(right_widget)
         
-        splitter.setStretchFactor(0, 1)   # left
-        splitter.setStretchFactor(1, 3)   # right
+        splitter.setStretchFactor(0, 1)   # left side
+        splitter.setStretchFactor(1, 3)   # right side gets more space
         
         # Dialog buttons
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -662,11 +691,6 @@ class ProfileEditor(QDialog):
                 pixmap = QPixmap(self.profile_image_path)
                 if not pixmap.isNull():
                     self.profile_image_label.setPixmap(pixmap.scaled(150, 150, Qt.KeepAspectRatio))
-            
-            # If profile has a type, select it
-            if self.profile_data.get("type"):
-                # This will be handled by parent after loading types
-                pass
     
     def load_types(self, types_data):
         """Load types into selector"""
@@ -701,11 +725,13 @@ class ProfileEditor(QDialog):
         if self.profile_data.get("variables") and self.profile_data.get("type") == type_data["name"]:
             self.variable_editor.set_variable_values(self.profile_data["variables"])
         
-        # Update preview
+        # Update preview with scaling that expands to fill space
         if type_data.get("preview"):
             pixmap = QPixmap(type_data["preview"])
             if not pixmap.isNull():
-                self.preview_image_label.setPixmap(pixmap.scaled(300, 300, Qt.KeepAspectRatio))
+                self.preview_image_label.setPixmap(pixmap)
+            else:
+                self.preview_image_label.setText("No preview available")
         else:
             self.preview_image_label.setText("No preview available")
     

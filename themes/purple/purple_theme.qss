@@ -500,7 +500,7 @@ QLabel.image-selector[selected="true"] {
     border: 2px solid #BB86FC;
 }
 
-/* Profile/Type Items */
+/* Profile/Type Items - DEFAULT STATE */
 QFrame.profile-item {
     background-color: #44475c;
     border: 2px solid #6f779a;
@@ -512,9 +512,15 @@ QFrame.profile-item:hover {
     border: 2px solid #8b95c0;
 }
 
+/* Profile/Type Items - SELECTED STATE using theme green colors */
 QFrame.profile-item[selected="true"] {
-    background-color: #6f779a;
-    border: 3px solid #BB86FC;
+    background-color: #1A2E20;  /* Dark green background from theme */
+    border: 3px solid #23c87b;  /* Light green border from theme */
+}
+
+QFrame.profile-item[selected="true"]:hover {
+    background-color: #1A2E20;  /* Keep dark green on hover when selected */
+    border: 3px solid #23c87b;  /* Keep light green border on hover when selected */
 }
 
 /* Blue variant for labels/images */
