@@ -153,6 +153,8 @@ class FrameTab(QWidget):
         
         # Initialize with default values
         self.update_hinge_count(2)
+        # Update auto positions after everything is setup
+        self.update_all_auto_positions()
         self.on_config_changed()
     
     def apply_styling(self):
@@ -322,6 +324,10 @@ class FrameTab(QWidget):
         self.x_offset_input.setValidator(QDoubleValidator(-1000, 1000, 2))
         upper_layout.addRow("Machine X Offset:", self.x_offset_input)
         
+        self.y_offset_input = QLineEdit("0")
+        self.y_offset_input.setValidator(QDoubleValidator(-1000, 1000, 2))
+        upper_layout.addRow("Machine Y Offset:", self.y_offset_input)
+        
         self.z_offset_input = QLineEdit("0")
         self.z_offset_input.setValidator(QDoubleValidator(-1000, 1000, 2))
         upper_layout.addRow("Machine Z Offset:", self.z_offset_input)
@@ -330,15 +336,25 @@ class FrameTab(QWidget):
         
         # Lower part - PM positions
         pm_group = QGroupBox("PM Positions")
-        pm_layout = QFormLayout()
+        pm_layout = QVBoxLayout()
         pm_group.setLayout(pm_layout)
+        
+        # PM auto checkbox
+        self.pm_auto_check = QCheckBox("Auto-position")
+        self.pm_auto_check.setChecked(True)
+        pm_layout.addWidget(self.pm_auto_check)
+        
+        # PM position inputs container
+        self.pm_inputs_widget = QWidget()
+        pm_inputs_layout = QFormLayout(self.pm_inputs_widget)
+        pm_layout.addWidget(self.pm_inputs_widget)
         
         # PM position inputs
         self.pm_inputs = []
         for i in range(4):
             pm_input = QLineEdit("0")
             pm_input.setValidator(QDoubleValidator(0, 10000, 2))
-            pm_layout.addRow(f"PM{i+1} Position:", pm_input)
+            pm_inputs_layout.addRow(f"PM{i+1} Position:", pm_input)
             self.pm_inputs.append(pm_input)
         
         layout.addWidget(pm_group)
@@ -393,7 +409,7 @@ class FrameTab(QWidget):
         lock_auto_layout.addWidget(self.lock_auto_check)
         
         lock_auto_layout.addWidget(QLabel("X Position:"))
-        self.lock_position_input = QLineEdit()
+        self.lock_position_input = QLineEdit("1050")
         self.lock_position_input.setValidator(QDoubleValidator(0, 10000, 2))
         self.lock_position_input.setEnabled(False)
         lock_auto_layout.addWidget(self.lock_position_input)
@@ -475,15 +491,17 @@ class FrameTab(QWidget):
         # Frame dimension changes
         self.height_input.textChanged.connect(self.on_frame_height_changed)
         self.x_offset_input.textChanged.connect(self.on_config_changed)
+        self.y_offset_input.textChanged.connect(self.on_config_changed)
         self.z_offset_input.textChanged.connect(self.on_config_changed)
         
-        # PM position changes
+        # PM configuration
+        self.pm_auto_check.stateChanged.connect(self.on_pm_auto_changed)
         for pm_input in self.pm_inputs:
             pm_input.textChanged.connect(self.on_config_changed)
         
         # Lock configuration
         self.lock_auto_check.stateChanged.connect(self.on_lock_auto_changed)
-        self.lock_position_input.textChanged.connect(self.on_config_changed)
+        self.lock_position_input.textChanged.connect(self.on_lock_position_changed)
         self.lock_active_check.stateChanged.connect(self.on_config_changed)
         self.lock_y_offset_input.textChanged.connect(self.on_config_changed)
         
@@ -516,9 +534,9 @@ class FrameTab(QWidget):
             hinge_layout.addWidget(QLabel(f"Hinge {i+1}:"))
             
             # Position input
-            position_input = QLineEdit()
+            position_input = QLineEdit("0")
             position_input.setValidator(QDoubleValidator(0, 10000, 2))
-            position_input.textChanged.connect(self.on_config_changed)
+            position_input.textChanged.connect(self.on_hinge_position_changed)
             hinge_layout.addWidget(position_input)
             self.hinge_inputs.append(position_input)
             
@@ -533,22 +551,18 @@ class FrameTab(QWidget):
             self.hinge_positions.append(0)
             self.hinge_active.append(True)
         
-        # Calculate auto positions if enabled
-        if self.hinge_auto_check.isChecked():
-            self.calculate_auto_positions()
+        # Set enabled state for position inputs
+        auto_enabled = self.hinge_auto_check.isChecked()
+        for input_field in self.hinge_inputs:
+            input_field.setEnabled(not auto_enabled)
         
+        # Update auto positions after creating new inputs
+        self.update_all_auto_positions()
         self.on_config_changed()
     
     def on_frame_height_changed(self):
         """Handle frame height changes"""
-        # Update lock position if auto
-        if self.lock_auto_check.isChecked():
-            self.calculate_lock_position()
-        
-        # Update hinge positions if auto
-        if self.hinge_auto_check.isChecked():
-            self.calculate_auto_positions()
-        
+        self.update_all_auto_positions()
         self.on_config_changed()
     
     def on_lock_auto_changed(self):
@@ -557,18 +571,14 @@ class FrameTab(QWidget):
         self.lock_position_input.setEnabled(not auto_enabled)
         
         if auto_enabled:
-            self.calculate_lock_position()
+            self.update_all_auto_positions()
         
         self.on_config_changed()
     
-    def calculate_lock_position(self):
-        """Calculate automatic lock position (middle of frame)"""
-        try:
-            height = float(self.height_input.text() or 0)
-            lock_pos = height / 2
-            self.lock_position_input.setText(f"{lock_pos:.1f}")
-        except ValueError:
-            pass
+    def on_lock_position_changed(self):
+        """Handle lock position changes - triggers PM auto update"""
+        self.update_all_auto_positions()
+        self.on_config_changed()
     
     def on_hinge_auto_changed(self):
         """Handle hinge auto checkbox changes"""
@@ -579,23 +589,113 @@ class FrameTab(QWidget):
             input_field.setEnabled(not auto_enabled)
         
         if auto_enabled:
-            self.calculate_auto_positions()
+            self.update_all_auto_positions()
         
         self.on_config_changed()
     
-    def calculate_auto_positions(self):
+    def on_hinge_position_changed(self):
+        """Handle hinge position changes - triggers PM auto update"""
+        self.update_all_auto_positions()
+        self.on_config_changed()
+    
+    def on_pm_auto_changed(self):
+        """Handle PM auto checkbox changes"""
+        auto_enabled = self.pm_auto_check.isChecked()
+        
+        # Enable/disable PM position inputs
+        for input_field in self.pm_inputs:
+            input_field.setEnabled(not auto_enabled)
+        
+        if auto_enabled:
+            self.update_all_auto_positions()
+        
+        self.on_config_changed()
+    
+    def update_all_auto_positions(self):
+        """Update all auto positions in order: lock -> hinges -> PMs"""
+        # Update lock position if auto
+        if self.lock_auto_check.isChecked():
+            self.calculate_lock_position()
+        
+        # Update hinge positions if auto
+        if self.hinge_auto_check.isChecked():
+            self.calculate_auto_hinge_positions()
+        
+        # Update PM positions if auto
+        if self.pm_auto_check.isChecked():
+            self.calculate_auto_pm_positions()
+    
+    def calculate_lock_position(self):
+        """Calculate automatic lock position (middle of frame)"""
+        try:
+            height = float(self.height_input.text() or 0)
+            # TODO: Calculate lock position based on frame height and constraints
+            lock_pos = height / 2
+            self.lock_position_input.setText(f"{lock_pos:.1f}")
+        except ValueError:
+            pass
+    
+    def calculate_auto_hinge_positions(self):
         """Calculate automatic hinge positions with equal spacing"""
         try:
             height = float(self.height_input.text() or 0)
             count = len(self.hinge_inputs)
             
             if count > 0 and height > 0:
-                # Calculate equal spacing
+                # TODO: Calculate hinge positions based on frame height, lock position, and constraints
+                # For now, use equal spacing
                 spacing = height / (count + 1)
                 
                 for i, input_field in enumerate(self.hinge_inputs):
                     position = spacing * (i + 1)
                     input_field.setText(f"{position:.1f}")
+        except ValueError:
+            pass
+    
+    def calculate_auto_pm_positions(self):
+        """Calculate automatic PM positions based on lock and hinge positions"""
+        try:
+            height = float(self.height_input.text() or 0)
+            
+            if height <= 0:
+                return
+            
+            # Get lock position
+            lock_pos = float(self.lock_position_input.text() or 0)
+            
+            # Get active hinge positions
+            hinge_positions = []
+            for i, (input_field, check) in enumerate(zip(self.hinge_inputs, self.hinge_active_checks)):
+                if check.isChecked():  # Only consider active hinges
+                    try:
+                        pos = float(input_field.text() or 0)
+                        if pos > 0:
+                            hinge_positions.append(pos)
+                    except ValueError:
+                        pass
+            
+            # TODO: Calculate PM positions based on lock position, hinge positions, and optimization criteria
+            # For now, use simple distribution
+            pm_positions = []
+            if len(hinge_positions) >= 2:
+                # Place PMs between hinges and lock
+                all_positions = sorted([lock_pos] + hinge_positions)
+                for i in range(min(4, len(all_positions) - 1)):
+                    pm_pos = (all_positions[i] + all_positions[i + 1]) / 2
+                    pm_positions.append(pm_pos)
+            else:
+                # Default positions when insufficient reference points
+                for i in range(4):
+                    pm_pos = height * (i + 1) / 5
+                    pm_positions.append(pm_pos)
+            
+            # Update PM inputs
+            for i, pm_input in enumerate(self.pm_inputs):
+                if i < len(pm_positions):
+                    pm_input.setText(f"{pm_positions[i]:.1f}")
+                else:
+                    pm_input.setText("0")
+            
         except ValueError:
             pass
     
@@ -632,15 +732,19 @@ class FrameTab(QWidget):
             'width': 1200,  # Fixed for now
             'height': float(self.height_input.text() or 0),
             'x_offset': float(self.x_offset_input.text() or 0),
+            'y_offset': float(self.y_offset_input.text() or 0),
             'z_offset': float(self.z_offset_input.text() or 0),
             'pm_positions': pm_positions,
+            'pm_auto': self.pm_auto_check.isChecked(),
             'lock_position': float(self.lock_position_input.text() or 0),
             'lock_y_offset': float(self.lock_y_offset_input.text() or 0),
             'lock_active': self.lock_active_check.isChecked(),
+            'lock_auto': self.lock_auto_check.isChecked(),
             'hinge_count': self.hinge_count_spin.value(),
             'hinge_positions': hinge_positions,
             'hinge_active': hinge_active,
             'hinge_y_offset': float(self.hinge_z_offset_input.text() or 0),
+            'hinge_auto': self.hinge_auto_check.isChecked(),
             'orientation': 'left' if self.left_radio.isChecked() else 'right',
             'profiles': self.profiles
         }
