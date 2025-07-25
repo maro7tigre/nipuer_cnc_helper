@@ -109,9 +109,9 @@ class FramePreview(QWidget):
             lock_height = 180*scale
             
             if self.orientation == "right":
-                lock_x = start_x - 35*scale/2 - lock_width - self.lock_y_offset
+                lock_x = start_x - 35*scale/2 - lock_width - self.lock_y_offset*scale
             else:  # left
-                lock_x = start_x + 35*scale/2 + self.lock_y_offset
+                lock_x = start_x + 35*scale/2 + self.lock_y_offset*scale
             
             painter.drawRect(lock_x, lock_y - lock_height/2, lock_width, lock_height)
         
@@ -126,9 +126,9 @@ class FramePreview(QWidget):
                 hinge_height = 80*scale
                 
                 if self.orientation == "right":
-                    hinge_x = start_x + 35*scale/2 + self.hinge_y_offset
+                    hinge_x = start_x + 35*scale/2 + self.hinge_y_offset*scale
                 else:  # left
-                    hinge_x = start_x - 35*scale/2 - hinge_width - self.hinge_y_offset
+                    hinge_x = start_x - 35*scale/2 - hinge_width - self.hinge_y_offset*scale
                 
                 painter.drawRect(hinge_x, hinge_y - hinge_height/2, hinge_width, hinge_height)
 
