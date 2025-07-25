@@ -66,13 +66,12 @@ class FramePreview(QWidget):
         start_x = widget_width / 2
         start_y = (widget_height - frame_height_scaled) / 2
         
-        # Draw PMs large:
+        # Draw PMs large (removed the > 0 check)
         for pm_pos in self.pm_positions:
-            if pm_pos > 0:  # Only draw if position is set
-                pm_y = start_y + frame_height_scaled - (pm_pos * scale)
-                # Large rectangle below frames
-                painter.setBrush(QBrush(QColor(128, 128, 128)))
-                painter.drawRect(start_x - large_PM[0]/2, pm_y - large_PM[1]/2, large_PM[0], large_PM[1])
+            pm_y = start_y + pm_pos * scale  # Position from top
+            # Large rectangle below frames
+            painter.setBrush(QBrush(QColor(128, 128, 128)))
+            painter.drawRect(start_x - large_PM[0]/2, pm_y - large_PM[1]/2, large_PM[0], large_PM[1])
                 
         # Draw frames
         # First frame (left)
@@ -90,23 +89,22 @@ class FramePreview(QWidget):
         painter.setBrush(QBrush(QColor(160, 82, 45)))  # Light brown
         painter.drawRect(start_x + frame_width_scaled/2 + frame_gap/2, start_y, frame_width_scaled/2, frame_height_scaled)
         
-        # Draw PMs small:
+        # Draw PMs small (removed the > 0 check)
         painter.setBrush(QBrush(QColor(128, 128, 128)))  # Grey
         painter.setPen(QPen(QColor(64, 64, 64), 2))
         
         for pm_pos in self.pm_positions:
-            if pm_pos > 0:  # Only draw if position is set
-                pm_y = start_y + frame_height_scaled - (pm_pos * scale)
-                # Small rectangle above frames
-                painter.setBrush(QBrush(QColor(192, 192, 192)))  # Lighter grey
-                painter.drawRect(start_x - small_PM[0]/2, pm_y - small_PM[1]/2, small_PM[0], small_PM[1])
+            pm_y = start_y + pm_pos * scale  # Position from top
+            # Small rectangle above frames
+            painter.setBrush(QBrush(QColor(192, 192, 192)))  # Lighter grey
+            painter.drawRect(start_x - small_PM[0]/2, pm_y - small_PM[1]/2, small_PM[0], small_PM[1])
         
         # Draw lock
         if self.lock_active and self.lock_position > 0:
             painter.setBrush(QBrush(QColor(0, 255, 0)))  # Green
             painter.setPen(QPen(QColor(0, 128, 0), 2))
             
-            lock_y = start_y + frame_height_scaled - (self.lock_position * scale)
+            lock_y = start_y + self.lock_position * scale  # Position from top
             lock_width = 35*scale
             lock_height = 180*scale
             
@@ -123,7 +121,7 @@ class FramePreview(QWidget):
         
         for i, (hinge_pos, active) in enumerate(zip(self.hinge_positions, self.hinge_active)):
             if active and hinge_pos > 0:
-                hinge_y = start_y + frame_height_scaled - (hinge_pos * scale)
+                hinge_y = start_y + hinge_pos * scale  # Position from top
                 hinge_width = 20*scale
                 hinge_height = 80*scale
                 
@@ -153,6 +151,8 @@ class FrameTab(QWidget):
         
         # Initialize with default values
         self.update_hinge_count(2)
+        # Set first PM to -25 as default
+        self.pm_inputs[0].setText("-25")
         # Update auto positions after everything is setup
         self.update_all_auto_positions()
         self.on_config_changed()
@@ -193,6 +193,9 @@ class FrameTab(QWidget):
             QLineEdit:disabled {
                 background-color: #0d0f18;
                 color: #6f779a;
+            }
+            QLineEdit.error {
+                border: 2px solid #ff4444;
             }
             QCheckBox {
                 color: #ffffff;
@@ -314,9 +317,9 @@ class FrameTab(QWidget):
         upper_layout = QFormLayout()
         upper_group.setLayout(upper_layout)
         
-        # Frame height
+        # Frame height with minimum value enforcement
         self.height_input = QLineEdit("2100")
-        self.height_input.setValidator(QDoubleValidator(0, 10000, 2))
+        self.height_input.setValidator(QDoubleValidator(840, 10000, 2))
         upper_layout.addRow("Frame Height (mm):", self.height_input)
         
         # Machine offsets
@@ -353,7 +356,7 @@ class FrameTab(QWidget):
         self.pm_inputs = []
         for i in range(4):
             pm_input = QLineEdit("0")
-            pm_input.setValidator(QDoubleValidator(0, 10000, 2))
+            pm_input.setValidator(QDoubleValidator(-100, 10000, 2))
             pm_inputs_layout.addRow(f"PM{i+1} Position:", pm_input)
             self.pm_inputs.append(pm_input)
         
@@ -408,7 +411,7 @@ class FrameTab(QWidget):
         self.lock_auto_check.setChecked(True)
         lock_auto_layout.addWidget(self.lock_auto_check)
         
-        lock_auto_layout.addWidget(QLabel("X Position:"))
+        lock_auto_layout.addWidget(QLabel("Position:"))
         self.lock_position_input = QLineEdit("1050")
         self.lock_position_input.setValidator(QDoubleValidator(0, 10000, 2))
         self.lock_position_input.setEnabled(False)
@@ -490,6 +493,7 @@ class FrameTab(QWidget):
         
         # Frame dimension changes
         self.height_input.textChanged.connect(self.on_frame_height_changed)
+        self.height_input.editingFinished.connect(self.enforce_min_height)
         self.x_offset_input.textChanged.connect(self.on_config_changed)
         self.y_offset_input.textChanged.connect(self.on_config_changed)
         self.z_offset_input.textChanged.connect(self.on_config_changed)
@@ -512,6 +516,15 @@ class FrameTab(QWidget):
         
         # Orientation
         self.orientation_group.buttonClicked.connect(self.on_config_changed)
+    
+    def enforce_min_height(self):
+        """Enforce minimum frame height of 840mm"""
+        try:
+            height = float(self.height_input.text() or 0)
+            if height < 840:
+                self.height_input.setText("840")
+        except ValueError:
+            self.height_input.setText("840")
     
     def update_hinge_count(self, count):
         """Update hinge position inputs based on count"""
@@ -602,9 +615,12 @@ class FrameTab(QWidget):
         """Handle PM auto checkbox changes"""
         auto_enabled = self.pm_auto_check.isChecked()
         
-        # Enable/disable PM position inputs
-        for input_field in self.pm_inputs:
-            input_field.setEnabled(not auto_enabled)
+        # Enable/disable PM position inputs (except the first one)
+        for i, input_field in enumerate(self.pm_inputs):
+            if i == 0:  # First PM is always editable
+                input_field.setEnabled(True)
+            else:
+                input_field.setEnabled(not auto_enabled)
         
         if auto_enabled:
             self.update_all_auto_positions()
@@ -624,36 +640,75 @@ class FrameTab(QWidget):
         # Update PM positions if auto
         if self.pm_auto_check.isChecked():
             self.calculate_auto_pm_positions()
+        
+        # Validate PM positions
+        self.validate_pm_positions()
     
     def calculate_lock_position(self):
-        """Calculate automatic lock position (middle of frame)"""
+        """Calculate automatic lock position (1050mm from bottom)"""
         try:
             height = float(self.height_input.text() or 0)
-            # TODO: Calculate lock position based on frame height and constraints
-            lock_pos = height / 2
+            # Lock is 1050mm from bottom, positions are from top
+            lock_pos = height - 1050
             self.lock_position_input.setText(f"{lock_pos:.1f}")
         except ValueError:
             pass
     
     def calculate_auto_hinge_positions(self):
-        """Calculate automatic hinge positions with equal spacing"""
+        """Calculate automatic hinge positions with specific rules"""
         try:
             height = float(self.height_input.text() or 0)
             count = len(self.hinge_inputs)
             
             if count > 0 and height > 0:
-                # TODO: Calculate hinge positions based on frame height, lock position, and constraints
-                # For now, use equal spacing
-                spacing = height / (count + 1)
-                
-                for i, input_field in enumerate(self.hinge_inputs):
-                    position = spacing * (i + 1)
-                    input_field.setText(f"{position:.1f}")
+                if count == 1:
+                    # Single hinge at middle
+                    self.hinge_inputs[0].setText(f"{height/2:.1f}")
+                elif count == 2:
+                    # First at 150, last at appropriate position
+                    self.hinge_inputs[0].setText("150.0")
+                    if height >= 2000:
+                        self.hinge_inputs[1].setText("1800.0")
+                    else:
+                        self.hinge_inputs[1].setText(f"{height - 200:.1f}")
+                elif count == 3:
+                    # First at 150, last at appropriate position
+                    self.hinge_inputs[0].setText("150.0")
+                    if height >= 2000:
+                        last_pos = 1800
+                    else:
+                        last_pos = height - 200
+                    self.hinge_inputs[2].setText(f"{last_pos:.1f}")
+                    
+                    # Middle positioned so lower-to-middle is 1.5x upper-to-middle
+                    # If first is at 150 and last at last_pos:
+                    # middle = first + (last - first) / 2.5
+                    middle_pos = 150 + (last_pos - 150) / 2.5
+                    self.hinge_inputs[1].setText(f"{middle_pos:.1f}")
+                elif count == 4:
+                    # First at 150, last at appropriate position
+                    self.hinge_inputs[0].setText("150.0")
+                    if height >= 2000:
+                        last_pos = 1800
+                    else:
+                        last_pos = height - 200
+                    self.hinge_inputs[3].setText(f"{last_pos:.1f}")
+                    
+                    # Calculate with cascading 1.5x ratios
+                    # Total distance = last_pos - 150
+                    # If d1 is first distance, then d2 = 1.5*d1, d3 = 1.5*d2 = 2.25*d1
+                    # Total = d1 + d2 + d3 = d1 + 1.5*d1 + 2.25*d1 = 4.75*d1
+                    total_distance = last_pos - 150
+                    d1 = total_distance / 4.75
+                    
+                    self.hinge_inputs[1].setText(f"{150 + d1:.1f}")
+                    self.hinge_inputs[2].setText(f"{150 + d1 + 1.5*d1:.1f}")
+                    # Fourth position is already set as last_pos
         except ValueError:
             pass
     
     def calculate_auto_pm_positions(self):
-        """Calculate automatic PM positions based on lock and hinge positions"""
+        """Calculate automatic PM positions based on rules and constraints"""
         try:
             height = float(self.height_input.text() or 0)
             
@@ -666,7 +721,7 @@ class FrameTab(QWidget):
             # Get active hinge positions
             hinge_positions = []
             for i, (input_field, check) in enumerate(zip(self.hinge_inputs, self.hinge_active_checks)):
-                if check.isChecked():  # Only consider active hinges
+                if check.isChecked():
                     try:
                         pos = float(input_field.text() or 0)
                         if pos > 0:
@@ -674,28 +729,155 @@ class FrameTab(QWidget):
                     except ValueError:
                         pass
             
-            # TODO: Calculate PM positions based on lock position, hinge positions, and optimization criteria
-            # For now, use simple distribution
-            pm_positions = []
-            if len(hinge_positions) >= 2:
-                # Place PMs between hinges and lock
-                all_positions = sorted([lock_pos] + hinge_positions)
-                for i in range(min(4, len(all_positions) - 1)):
-                    pm_pos = (all_positions[i] + all_positions[i + 1]) / 2
-                    pm_positions.append(pm_pos)
+            # First PM is always at -25 (set by user or default)
+            pm1_pos = float(self.pm_inputs[0].text() or -25)
+            
+            # Calculate positions for PM 2, 3, and 4
+            # Rules:
+            # 1. PM1-PM2 >= 265
+            # 2. PM2-PM3 >= 140
+            # 3. PM3-PM4 >= 175
+            # 4. PM1-PM4 < height - 240
+            # 5. Stay away from lock and hinges (>= 170)
+            
+            # Maximum span available
+            max_span = height - 240 - pm1_pos
+            
+            # Minimum required distances
+            min_distances = [265, 140, 175]  # PM1-2, PM2-3, PM3-4
+            min_total = sum(min_distances)
+            
+            if max_span < min_total:
+                # Can't satisfy all constraints, use minimum distances
+                pm2_pos = pm1_pos + 265
+                pm3_pos = pm2_pos + 140
+                pm4_pos = pm3_pos + 175
             else:
-                # Default positions when insufficient reference points
+                # Create list of all obstacles (lock and hinges)
+                obstacles = [lock_pos] + hinge_positions
+                obstacles.sort()
+                
+                # Try to distribute PMs optimally
+                # Start with minimum distances
+                positions = [pm1_pos]
+                positions.append(pm1_pos + 265)
+                positions.append(positions[1] + 140)
+                positions.append(positions[2] + 175)
+                
+                # If we have extra space, distribute it
+                extra_space = max_span - min_total
+                if extra_space > 0:
+                    # Add extra space proportionally to each gap
+                    # Favor larger gaps between lower PMs
+                    weights = [3, 2, 1]  # More space between PM1-2, less between PM3-4
+                    total_weight = sum(weights)
+                    
+                    for i in range(3):
+                        extra = extra_space * weights[i] / total_weight
+                        positions[i+1] += extra * (i+1)  # Cumulative effect
+                
+                # Adjust positions to avoid obstacles
+                for i in range(1, 4):
+                    # Check distance from obstacles
+                    for obstacle in obstacles:
+                        if abs(positions[i] - obstacle) < 170:
+                            # Too close to obstacle, adjust
+                            if positions[i] < obstacle:
+                                # Move PM before obstacle
+                                new_pos = obstacle - 170
+                                if i > 1 and new_pos - positions[i-1] < min_distances[i-1]:
+                                    # Would violate minimum distance, move after obstacle
+                                    new_pos = obstacle + 170
+                            else:
+                                # Move PM after obstacle
+                                new_pos = obstacle + 170
+                            
+                            # Check if new position is valid
+                            if i < 3:
+                                # Make sure we don't push next PMs too far
+                                remaining_space = height - 240 - new_pos
+                                remaining_distances = sum(min_distances[i:])
+                                if remaining_space >= remaining_distances:
+                                    positions[i] = new_pos
+                
+                pm2_pos = positions[1]
+                pm3_pos = positions[2]
+                pm4_pos = positions[3]
+            
+            # Update PM inputs (skip PM1 as it's user-controlled)
+            self.pm_inputs[1].setText(f"{pm2_pos:.1f}")
+            self.pm_inputs[2].setText(f"{pm3_pos:.1f}")
+            self.pm_inputs[3].setText(f"{pm4_pos:.1f}")
+            
+        except ValueError:
+            pass
+    
+    def validate_pm_positions(self):
+        """Validate PM positions and mark errors with red borders"""
+        try:
+            # Reset all borders first
+            for pm_input in self.pm_inputs:
+                pm_input.setProperty("class", "")
+                pm_input.style().polish(pm_input)
+            
+            # Get all positions
+            pm_positions = []
+            for pm_input in self.pm_inputs:
+                try:
+                    pos = float(pm_input.text() or 0)
+                    pm_positions.append(pos)
+                except ValueError:
+                    pm_positions.append(0)
+            
+            # Get lock and hinge positions
+            lock_pos = float(self.lock_position_input.text() or 0)
+            height = float(self.height_input.text() or 0)
+            
+            hinge_positions = []
+            for i, (input_field, check) in enumerate(zip(self.hinge_inputs, self.hinge_active_checks)):
+                if check.isChecked():
+                    try:
+                        pos = float(input_field.text() or 0)
+                        if pos > 0:
+                            hinge_positions.append(pos)
+                    except ValueError:
+                        pass
+            
+            # Check rules in order of priority
+            errors = [False] * 4
+            
+            # Rule 1: Order must be maintained (PM1 < PM2 < PM3 < PM4)
+            for i in range(3):
+                if pm_positions[i] >= pm_positions[i+1]:
+                    errors[i] = True
+                    errors[i+1] = True
+            
+            # Rule 2: Minimum distances
+            min_distances = [265, 140, 175]  # PM1-2, PM2-3, PM3-4
+            for i in range(3):
+                if pm_positions[i+1] - pm_positions[i] < min_distances[i]:
+                    errors[i] = True
+                    errors[i+1] = True
+            
+            # Rule 3: Total span < height - 240
+            if pm_positions[3] - pm_positions[0] >= height - 240:
+                # Mark all as errors since total span is too large
                 for i in range(4):
-                    pm_pos = height * (i + 1) / 5
-                    pm_positions.append(pm_pos)
+                    errors[i] = True
             
-            # Update PM inputs
-            for i, pm_input in enumerate(self.pm_inputs):
-                if i < len(pm_positions):
-                    pm_input.setText(f"{pm_positions[i]:.1f}")
-                else:
-                    pm_input.setText("0")
+            # Rule 4: Distance from lock and hinges >= 170
+            obstacles = [lock_pos] + hinge_positions
+            for i, pm_pos in enumerate(pm_positions):
+                for obstacle in obstacles:
+                    if abs(pm_pos - obstacle) < 170:
+                        errors[i] = True
             
+            # Apply error styling
+            for i, (pm_input, has_error) in enumerate(zip(self.pm_inputs, errors)):
+                if has_error:
+                    pm_input.setProperty("class", "error")
+                    pm_input.style().polish(pm_input)
+                    
         except ValueError:
             pass
     
