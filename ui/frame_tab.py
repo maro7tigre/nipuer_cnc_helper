@@ -139,6 +139,20 @@ class FrameTab(QWidget):
     next_clicked = Signal()
     configuration_changed = Signal(dict)
     
+    # Configuration parameters - easily adjustable
+    PM_CONFIG = {
+        'sizes': {
+            1: [265, 140],  # PM1 dimensions [width, height]
+            2: [140, 175],  # PM2 dimensions
+            3: [175, 240],  # PM3 dimensions
+            4: [240, 120]   # PM4 dimensions
+        },
+        'default_pm1_position': -25,
+        'lock_safety_distance': 170,
+        'hinge_safety_distance': 170,
+        'min_range_size': 120
+    }
+    
     def __init__(self):
         super().__init__()
         self.hinge_positions = []
@@ -151,8 +165,14 @@ class FrameTab(QWidget):
         
         # Initialize with default values
         self.update_hinge_count(2)
-        # Set first PM to -25 as default
-        self.pm_inputs[0].setText("-25")
+        # Set first PM to default position
+        self.pm_inputs[0].setText(str(self.PM_CONFIG['default_pm1_position']))
+        
+        # FIXED: Apply auto-position states after UI setup
+        self.on_pm_auto_changed()  # This will disable PM2-4 inputs since auto is checked
+        self.on_lock_auto_changed()  # This will disable lock position input since auto is checked
+        self.on_hinge_auto_changed()  # This will disable hinge inputs since auto is checked
+        
         # Update auto positions after everything is setup
         self.update_all_auto_positions()
         self.on_config_changed()
@@ -700,193 +720,219 @@ class FrameTab(QWidget):
                     self.hinge_inputs[3].setText(f"{last_pos:.1f}")
                     
                     # Calculate with cascading 1.5x ratios
-                    # Total distance = last_pos - 150
-                    # If d1 is first distance, then d2 = 1.5*d1, d3 = 1.5*d2 = 2.25*d1
-                    # Total = d1 + d2 + d3 = d1 + 1.5*d1 + 2.25*d1 = 4.75*d1
                     total_distance = last_pos - 150
                     d1 = total_distance / 4.75
                     
                     self.hinge_inputs[1].setText(f"{150 + d1:.1f}")
                     self.hinge_inputs[2].setText(f"{150 + d1 + 1.5*d1:.1f}")
-                    # Fourth position is already set as last_pos
         except ValueError:
             pass
     
     def calculate_auto_pm_positions(self):
-        """Calculate automatic PM positions based on rules and constraints"""
-        # Configuration parameters (easily adjustable)
-        PM_SIZES = {
-            1: [265, 140],  # PM1 dimensions
-            2: [140, 175],  # PM2 dimensions
-            3: [175, 240],  # PM3 dimensions
-            4: [240, 120]   # PM4 dimensions (height used for max constraint)
-        }
+        """
+        Calculate automatic PM positions following the improved algorithm:
+        1. PM1 is at user-defined position (default -25)
+        2. Define available range for other PMs
+        3. Remove obstacle zones (lock/hinges with safety distances)
+        4. Filter ranges that are too small
+        5. Place PM4 at end of last valid range
+        6. Find optimal positions for PM2 and PM3
+        """
+        config = self.PM_CONFIG
         
-        # Minimum distances between PMs (center to center)
-        MIN_DISTANCES = {
-            '1-2': PM_SIZES[1][0]/2 + PM_SIZES[2][0]/2,  # 265/2 + 140/2 = 202.5
-            '2-3': PM_SIZES[2][0]/2 + PM_SIZES[3][0]/2,  # 140/2 + 175/2 = 157.5
-            '3-4': PM_SIZES[3][0]/2 + PM_SIZES[4][0]/2   # 175/2 + 240/2 = 207.5
-        }
-        
-        # Safety distances from obstacles
-        LOCK_SAFETY_DISTANCE = 170
-        HINGE_SAFETY_DISTANCE = 170
-        MIN_RANGE_SIZE = 120
-        
-        height = float(self.height_input.text() or 0)
-        if height <= 0:
-            return
-        
-        # PM1 is always at -25 (user-controlled)
-        pm1_pos = float(self.pm_inputs[0].text() or -25)
-        
-        # Define the valid range for other PMs
-        min_position = pm1_pos + MIN_DISTANCES['1-2']
-        max_position = height - PM_SIZES[4][1]/2  # height - 120
-        
-        if max_position <= min_position:
-            # Not enough space, just set minimum distances
-            self.pm_inputs[1].setText(f"{pm1_pos + MIN_DISTANCES['1-2']:.1f}")
-            self.pm_inputs[2].setText(f"{pm1_pos + MIN_DISTANCES['1-2'] + MIN_DISTANCES['2-3']:.1f}")
-            self.pm_inputs[3].setText(f"{pm1_pos + MIN_DISTANCES['1-2'] + MIN_DISTANCES['2-3'] + MIN_DISTANCES['3-4']:.1f}")
-            return
-        
-        # Get obstacles (lock and active hinges)
-        obstacles = []
-        
-        # Add lock if active
-        if self.lock_active_check.isChecked():
-            lock_pos = float(self.lock_position_input.text() or 0)
-            if lock_pos > 0:
-                obstacles.append((lock_pos - LOCK_SAFETY_DISTANCE, lock_pos + LOCK_SAFETY_DISTANCE))
-        
-        # Add active hinges
-        for input_field, check in zip(self.hinge_inputs, self.hinge_active_checks):
-            if check.isChecked():
-                hinge_pos = float(input_field.text() or 0)
-                if hinge_pos > 0:
-                    obstacles.append((hinge_pos - HINGE_SAFETY_DISTANCE, hinge_pos + HINGE_SAFETY_DISTANCE))
-        
+        try:
+            height = float(self.height_input.text() or 0)
+            if height <= 0:
+                return
+            
+            # Step 1: Get PM1 position (user-controlled)
+            pm1_pos = float(self.pm_inputs[0].text() or config['default_pm1_position'])
+            
+            # Step 2: Calculate minimum distance from PM1 to PM2
+            pm1_size = config['sizes'][1]
+            pm2_size = config['sizes'][2]
+            min_pm1_to_pm2 = pm1_size[0]/2 + pm2_size[0]/2  # 265/2 + 140/2 = 202.5
+            
+            # Define available range for PM2-4
+            range_start = pm1_pos + min_pm1_to_pm2
+            pm4_size = config['sizes'][4]
+            range_end = height - pm4_size[1]/2  # height - 120
+            
+            if range_end <= range_start:
+                # Not enough space - fallback to minimum distances
+                self._fallback_pm_positions(pm1_pos)
+                return
+            
+            # Step 3: Get obstacles (active lock and hinges)
+            obstacles = []
+            
+            # Add lock obstacle
+            if self.lock_active_check.isChecked():
+                lock_pos = float(self.lock_position_input.text() or 0)
+                if lock_pos > 0:
+                    safety = config['lock_safety_distance']
+                    obstacles.append((lock_pos - safety, lock_pos + safety))
+            
+            # Add hinge obstacles
+            for input_field, check in zip(self.hinge_inputs, self.hinge_active_checks):
+                if check.isChecked():
+                    hinge_pos = float(input_field.text() or 0)
+                    if hinge_pos > 0:
+                        safety = config['hinge_safety_distance']
+                        obstacles.append((hinge_pos - safety, hinge_pos + safety))
+            
+            # Step 4: Calculate valid ranges by removing obstacle zones
+            valid_ranges = self._calculate_valid_ranges(range_start, range_end, obstacles)
+            
+            # Step 5: Filter ranges that are too small
+            min_size = config['min_range_size']
+            valid_ranges = [(start, end) for start, end in valid_ranges if end - start >= min_size]
+            
+            if not valid_ranges:
+                # No valid ranges - fallback
+                self._fallback_pm_positions(pm1_pos)
+                return
+            
+            # Step 6: Place PM4 at end of last valid range
+            pm4_pos = valid_ranges[-1][1]
+            
+            # Step 7: Find optimal positions for PM2 and PM3
+            pm2_pos, pm3_pos = self._optimize_pm2_pm3_positions(pm1_pos, pm4_pos, valid_ranges)
+            
+            # Update inputs
+            self.pm_inputs[1].setText(f"{pm2_pos:.1f}")
+            self.pm_inputs[2].setText(f"{pm3_pos:.1f}")
+            self.pm_inputs[3].setText(f"{pm4_pos:.1f}")
+            
+        except ValueError:
+            # Error in calculations - use fallback
+            pm1_pos = float(self.pm_inputs[0].text() or config['default_pm1_position'])
+            self._fallback_pm_positions(pm1_pos)
+    
+    def _calculate_valid_ranges(self, range_start, range_end, obstacles):
+        """Calculate valid ranges by removing obstacle zones"""
         # Sort obstacles by start position
-        obstacles.sort(key=lambda x: x[0])
+        obstacles = sorted(obstacles, key=lambda x: x[0])
         
-        # Find valid ranges by removing obstacle zones
         valid_ranges = []
-        current_start = min_position
+        current_start = range_start
         
         for obstacle_start, obstacle_end in obstacles:
-            if obstacle_start > current_start:
-                # Add range before this obstacle
-                valid_ranges.append((current_start, min(obstacle_start, max_position)))
-            current_start = max(current_start, obstacle_end)
+            # Only consider obstacles that overlap with our range
+            obstacle_start = max(obstacle_start, range_start)
+            obstacle_end = min(obstacle_end, range_end)
+            
+            if obstacle_start < range_end and obstacle_end > range_start:
+                # This obstacle overlaps with our range
+                if obstacle_start > current_start:
+                    # Add range before this obstacle
+                    valid_ranges.append((current_start, obstacle_start))
+                
+                # Move current start past this obstacle
+                current_start = max(current_start, obstacle_end)
         
         # Add final range if there's space after last obstacle
-        if current_start < max_position:
-            valid_ranges.append((current_start, max_position))
+        if current_start < range_end:
+            valid_ranges.append((current_start, range_end))
         
-        # Filter out ranges that are too small
-        valid_ranges = [(start, end) for start, end in valid_ranges 
-                        if end - start >= MIN_RANGE_SIZE]
+        return valid_ranges
+    
+    def _optimize_pm2_pm3_positions(self, pm1_pos, pm4_pos, valid_ranges):
+        """Find optimal positions for PM2 and PM3 that maximize distances"""
+        config = self.PM_CONFIG
         
-        if not valid_ranges:
-            # No valid ranges, fall back to minimum distances
-            self.pm_inputs[1].setText(f"{pm1_pos + MIN_DISTANCES['1-2']:.1f}")
-            self.pm_inputs[2].setText(f"{pm1_pos + MIN_DISTANCES['1-2'] + MIN_DISTANCES['2-3']:.1f}")
-            self.pm_inputs[3].setText(f"{pm1_pos + MIN_DISTANCES['1-2'] + MIN_DISTANCES['2-3'] + MIN_DISTANCES['3-4']:.1f}")
-            return
+        # Calculate minimum distances
+        pm2_size = config['sizes'][2]
+        pm3_size = config['sizes'][3]
+        min_pm1_to_pm2 = config['sizes'][1][0]/2 + pm2_size[0]/2  # 202.5
+        min_pm2_to_pm3 = pm2_size[0]/2 + pm3_size[0]/2  # 157.5
+        min_pm3_to_pm4 = pm3_size[0]/2 + config['sizes'][4][0]/2  # 207.5
         
-        # Set PM4 to the end of the last valid range
-        pm4_pos = valid_ranges[-1][1]
+        # Start with minimum distances
+        pm2_pos = pm1_pos + min_pm1_to_pm2
+        pm3_pos = pm4_pos - min_pm3_to_pm4
         
-        # Find optimal positions for PM2 and PM3
-        # We want them to be as far as possible from PM1, PM4, and each other
-        best_pm2 = pm1_pos + MIN_DISTANCES['1-2']
-        best_pm3 = pm4_pos - MIN_DISTANCES['3-4']
+        # Check if we have enough space between PM2 and PM3
+        if pm3_pos - pm2_pos < min_pm2_to_pm3:
+            # Not enough space - use minimum distances from PM1
+            pm2_pos = pm1_pos + min_pm1_to_pm2
+            pm3_pos = pm2_pos + min_pm2_to_pm3
+            return pm2_pos, pm3_pos
         
-        # Check if we can fit PM2 and PM3 with required spacing
-        if best_pm3 - best_pm2 >= MIN_DISTANCES['2-3']:
-            # We have enough space, try to optimize positions
-            # Distribute extra space proportionally
-            total_space = pm4_pos - pm1_pos
-            required_space = MIN_DISTANCES['1-2'] + MIN_DISTANCES['2-3'] + MIN_DISTANCES['3-4']
-            
-            if total_space > required_space:
-                extra_space = total_space - required_space
-                # Distribute extra space with weights (more space at bottom)
-                weights = [3, 2, 1]
-                total_weight = sum(weights)
-                
-                extra_1_2 = extra_space * weights[0] / total_weight
-                extra_2_3 = extra_space * weights[1] / total_weight
-                extra_3_4 = extra_space * weights[2] / total_weight
-                
-                best_pm2 = pm1_pos + MIN_DISTANCES['1-2'] + extra_1_2
-                best_pm3 = best_pm2 + MIN_DISTANCES['2-3'] + extra_2_3
-                # PM4 stays at the end of the range
-            
-            # Ensure PM2 and PM3 are in valid ranges
-            pm2_pos = best_pm2
-            pm3_pos = best_pm3
-            
-            # Find valid range for PM2
-            pm2_valid = False
+        # Try to place PM2 and PM3 in valid ranges
+        # Find the best valid positions
+        best_pm2 = pm2_pos
+        best_pm3 = pm3_pos
+        
+        # Check if PM2 position is in a valid range
+        pm2_valid = self._position_in_valid_ranges(pm2_pos, valid_ranges)
+        if not pm2_valid:
+            # Find the closest valid range for PM2
             for start, end in valid_ranges:
-                if start <= pm2_pos <= end:
-                    pm2_valid = True
+                if start >= pm1_pos + min_pm1_to_pm2:
+                    best_pm2 = start
                     break
-                elif pm2_pos < start:
-                    # Adjust to start of this range
-                    pm2_pos = start
-                    pm2_valid = True
-                    break
-            
-            # Find valid range for PM3
-            pm3_valid = False
-            for start, end in valid_ranges:
-                if start <= pm3_pos <= end:
-                    pm3_valid = True
-                    break
-                elif pm3_pos < start and pm3_pos + MIN_RANGE_SIZE/2 >= start:
-                    # Close enough, adjust to start
-                    pm3_pos = start
-                    pm3_valid = True
-                    break
-            
-            # Final validation and adjustment
-            if not pm2_valid or not pm3_valid or pm3_pos - pm2_pos < MIN_DISTANCES['2-3']:
-                # Fall back to equal distribution
-                pm2_pos = pm1_pos + MIN_DISTANCES['1-2']
-                pm3_pos = pm4_pos - MIN_DISTANCES['3-4']
-        else:
-            # Not enough space, use minimum distances from PM1
-            pm2_pos = pm1_pos + MIN_DISTANCES['1-2']
-            pm3_pos = pm2_pos + MIN_DISTANCES['2-3']
-            pm4_pos = pm3_pos + MIN_DISTANCES['3-4']
         
-        # Update PM inputs
+        # Check if PM3 position is in a valid range  
+        pm3_valid = self._position_in_valid_ranges(pm3_pos, valid_ranges)
+        if not pm3_valid:
+            # Find the closest valid range for PM3
+            for start, end in reversed(valid_ranges):
+                if end <= pm4_pos - min_pm3_to_pm4:
+                    best_pm3 = end
+                    break
+        
+        # Ensure minimum distance between PM2 and PM3
+        if best_pm3 - best_pm2 < min_pm2_to_pm3:
+            # Adjust positions to maintain minimum distance
+            mid_point = (best_pm2 + best_pm3) / 2
+            best_pm2 = mid_point - min_pm2_to_pm3 / 2
+            best_pm3 = mid_point + min_pm2_to_pm3 / 2
+            
+            # Ensure they're still in valid ranges
+            if not self._position_in_valid_ranges(best_pm2, valid_ranges):
+                best_pm2 = pm1_pos + min_pm1_to_pm2
+            if not self._position_in_valid_ranges(best_pm3, valid_ranges):
+                best_pm3 = best_pm2 + min_pm2_to_pm3
+        
+        return best_pm2, best_pm3
+    
+    def _position_in_valid_ranges(self, position, valid_ranges):
+        """Check if a position is within any valid range"""
+        for start, end in valid_ranges:
+            if start <= position <= end:
+                return True
+        return False
+    
+    def _fallback_pm_positions(self, pm1_pos):
+        """Fallback to minimum distances when optimization fails"""
+        config = self.PM_CONFIG
+        
+        # Calculate minimum distances
+        min_distances = [
+            config['sizes'][1][0]/2 + config['sizes'][2][0]/2,  # PM1-PM2: 202.5
+            config['sizes'][2][0]/2 + config['sizes'][3][0]/2,  # PM2-PM3: 157.5
+            config['sizes'][3][0]/2 + config['sizes'][4][0]/2   # PM3-PM4: 207.5
+        ]
+        
+        pm2_pos = pm1_pos + min_distances[0]
+        pm3_pos = pm2_pos + min_distances[1]
+        pm4_pos = pm3_pos + min_distances[2]
+        
         self.pm_inputs[1].setText(f"{pm2_pos:.1f}")
         self.pm_inputs[2].setText(f"{pm3_pos:.1f}")
         self.pm_inputs[3].setText(f"{pm4_pos:.1f}")
 
-
     def validate_pm_positions(self):
         """Validate PM positions and mark errors with red borders"""
-        # Configuration parameters
-        PM_SIZES = {
-            1: [265, 140],
-            2: [140, 175],
-            3: [175, 240],
-            4: [240, 120]
-        }
+        config = self.PM_CONFIG
         
-        MIN_DISTANCES = {
-            '1-2': PM_SIZES[1][0]/2 + PM_SIZES[2][0]/2,  # 202.5
-            '2-3': PM_SIZES[2][0]/2 + PM_SIZES[3][0]/2,  # 157.5
-            '3-4': PM_SIZES[3][0]/2 + PM_SIZES[4][0]/2   # 207.5
+        # Calculate minimum distances
+        min_distances = {
+            '1-2': config['sizes'][1][0]/2 + config['sizes'][2][0]/2,  # 202.5
+            '2-3': config['sizes'][2][0]/2 + config['sizes'][3][0]/2,  # 157.5
+            '3-4': config['sizes'][3][0]/2 + config['sizes'][4][0]/2   # 207.5
         }
-        
-        OBSTACLE_SAFETY_DISTANCE = 170
         
         # Reset all borders first
         for pm_input in self.pm_inputs:
@@ -907,9 +953,9 @@ class FrameTab(QWidget):
         
         # Check minimum distances between consecutive PMs
         distance_checks = [
-            (0, 1, MIN_DISTANCES['1-2']),
-            (1, 2, MIN_DISTANCES['2-3']),
-            (2, 3, MIN_DISTANCES['3-4'])
+            (0, 1, min_distances['1-2']),
+            (1, 2, min_distances['2-3']),
+            (2, 3, min_distances['3-4'])
         ]
         
         for i, j, min_dist in distance_checks:
@@ -940,15 +986,24 @@ class FrameTab(QWidget):
                     pass
         
         # Check each PM against obstacles
+        lock_safety = config['lock_safety_distance'] 
+        hinge_safety = config['hinge_safety_distance']
+        
         for i, pm_pos in enumerate(pm_positions):
             for obstacle_pos in obstacles:
-                if abs(pm_pos - obstacle_pos) < OBSTACLE_SAFETY_DISTANCE:
+                # Use appropriate safety distance based on obstacle type
+                safety_distance = lock_safety  # Default to lock safety distance
+                # In practice, you'd need to track which obstacle is which
+                # For now, using the larger of the two distances
+                safety_distance = max(lock_safety, hinge_safety)
+                
+                if abs(pm_pos - obstacle_pos) < safety_distance:
                     errors[i] = True
         
         # Check if PM4 exceeds frame height constraint
         try:
             height = float(self.height_input.text() or 0)
-            if pm_positions[3] > height - PM_SIZES[4][1]/2:  # PM4 too high
+            if pm_positions[3] > height - config['sizes'][4][1]/2:  # PM4 too high
                 errors[3] = True
         except ValueError:
             pass
