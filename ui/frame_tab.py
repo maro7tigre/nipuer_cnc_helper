@@ -49,47 +49,57 @@ class FramePreview(QWidget):
         widget_height = self.height()
         
         # Frame dimensions in preview (scaled)
-        scale = min(widget_height / (self.frame_height + 200), 
-                   widget_width / (self.frame_width * 2 + 500))
+        scale = min(widget_height / (self.frame_height + 100), 
+                   widget_width / (self.frame_width * 2 + 100))
         
         frame_height_scaled = self.frame_height * scale
-        frame_width_scaled = 100  # Fixed visual width
-        frame_gap = 35  # Gap between frames
+        frame_width_scaled = 100*scale  # Fixed visual width
+        
+        
+        # PMs dimensions
+        large_PM = [300*scale,130*scale]
+        small_PM = [152*scale,82*scale]
+        
+        frame_gap = small_PM[0]-frame_width_scaled
         
         # Center the drawing
-        total_width = frame_width_scaled * 2 + frame_gap
-        start_x = (widget_width - total_width) / 2
+        start_x = widget_width / 2
         start_y = (widget_height - frame_height_scaled) / 2
         
+        # Draw PMs large:
+        for pm_pos in self.pm_positions:
+            if pm_pos > 0:  # Only draw if position is set
+                pm_y = start_y + frame_height_scaled - (pm_pos * scale)
+                # Large rectangle below frames
+                painter.setBrush(QBrush(QColor(128, 128, 128)))
+                painter.drawRect(start_x - large_PM[0]/2, pm_y - large_PM[1]/2, large_PM[0], large_PM[1])
+                
         # Draw frames
         # First frame (left)
-        painter.setBrush(QBrush(QColor(139, 69, 19)))  # Dark brown
-        painter.setPen(QPen(QColor(101, 67, 33), 2))
-        painter.drawRect(start_x, start_y, frame_width_scaled/2, frame_height_scaled)
-        
         painter.setBrush(QBrush(QColor(160, 82, 45)))  # Light brown
-        painter.drawRect(start_x + frame_width_scaled/2, start_y, frame_width_scaled/2, frame_height_scaled)
+        painter.setPen(QPen(QColor(101, 67, 33), 2))
+        painter.drawRect(start_x - frame_gap/2 - frame_width_scaled, start_y, frame_width_scaled/2, frame_height_scaled)
+        
+        painter.setBrush(QBrush(QColor(139, 69, 19)))  # Dark brown
+        painter.drawRect(start_x - frame_width_scaled/2 - frame_gap/2, start_y, frame_width_scaled/2, frame_height_scaled)
         
         # Second frame (right) - mirrored
-        painter.setBrush(QBrush(QColor(160, 82, 45)))  # Light brown
-        painter.drawRect(start_x + frame_width_scaled + frame_gap, start_y, frame_width_scaled/2, frame_height_scaled)
-        
         painter.setBrush(QBrush(QColor(139, 69, 19)))  # Dark brown
-        painter.drawRect(start_x + frame_width_scaled * 1.5 + frame_gap, start_y, frame_width_scaled/2, frame_height_scaled)
+        painter.drawRect(start_x + frame_gap/2, start_y, frame_width_scaled/2, frame_height_scaled)
         
-        # Draw PMs
+        painter.setBrush(QBrush(QColor(160, 82, 45)))  # Light brown
+        painter.drawRect(start_x + frame_width_scaled/2 + frame_gap/2, start_y, frame_width_scaled/2, frame_height_scaled)
+        
+        # Draw PMs small:
         painter.setBrush(QBrush(QColor(128, 128, 128)))  # Grey
         painter.setPen(QPen(QColor(64, 64, 64), 2))
         
         for pm_pos in self.pm_positions:
             if pm_pos > 0:  # Only draw if position is set
                 pm_y = start_y + frame_height_scaled - (pm_pos * scale)
-                # Large rectangle below frames
-                painter.setBrush(QBrush(QColor(128, 128, 128)))
-                painter.drawRect(start_x - 100, pm_y - 65, 300, 130)
                 # Small rectangle above frames
                 painter.setBrush(QBrush(QColor(192, 192, 192)))  # Lighter grey
-                painter.drawRect(start_x + 9, pm_y - 76 - 152, 82, 152)
+                painter.drawRect(start_x - small_PM[0]/2, pm_y - small_PM[1]/2, small_PM[0], small_PM[1])
         
         # Draw lock
         if self.lock_active and self.lock_position > 0:
@@ -97,13 +107,13 @@ class FramePreview(QWidget):
             painter.setPen(QPen(QColor(0, 128, 0), 2))
             
             lock_y = start_y + frame_height_scaled - (self.lock_position * scale)
-            lock_width = 35
-            lock_height = 180
+            lock_width = 35*scale
+            lock_height = 180*scale
             
             if self.orientation == "right":
-                lock_x = start_x - 20 - lock_width - self.lock_y_offset
+                lock_x = start_x - 35*scale/2 - lock_width - self.lock_y_offset
             else:  # left
-                lock_x = start_x + total_width + 20 + self.lock_y_offset
+                lock_x = start_x + 35*scale/2 + self.lock_y_offset
             
             painter.drawRect(lock_x, lock_y - lock_height/2, lock_width, lock_height)
         
@@ -114,13 +124,13 @@ class FramePreview(QWidget):
         for i, (hinge_pos, active) in enumerate(zip(self.hinge_positions, self.hinge_active)):
             if active and hinge_pos > 0:
                 hinge_y = start_y + frame_height_scaled - (hinge_pos * scale)
-                hinge_width = 20
-                hinge_height = 80
+                hinge_width = 20*scale
+                hinge_height = 80*scale
                 
                 if self.orientation == "right":
-                    hinge_x = start_x + total_width + 20 + self.hinge_y_offset
+                    hinge_x = start_x + 35*scale/2 + self.hinge_y_offset
                 else:  # left
-                    hinge_x = start_x - 20 - hinge_width - self.hinge_y_offset
+                    hinge_x = start_x - 35*scale/2 - hinge_width - self.hinge_y_offset
                 
                 painter.drawRect(hinge_x, hinge_y - hinge_height/2, hinge_width, hinge_height)
 
