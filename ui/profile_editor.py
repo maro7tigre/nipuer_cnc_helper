@@ -9,8 +9,8 @@ import json
 import os
 from datetime import datetime
 
-# Import the new G-code editor
-from gcode_ide import GCodeEditor
+# Import the type editor components
+from .type_editor import TypeEditor, ClickableImageLabel
 
 
 class ScaledImageLabel(QLabel):
@@ -42,37 +42,6 @@ class ScaledImageLabel(QLabel):
         """Handle resize to update pixmap scaling"""
         super().resizeEvent(event)
         self.updatePixmap()
-
-
-class ClickableImageLabel(QLabel):
-    """Clickable image label with Python-based styling"""
-    clicked = Signal()
-    
-    def __init__(self, size=(100, 100)):
-        super().__init__()
-        self.setFixedSize(*size)
-        self.setAlignment(Qt.AlignCenter)
-        self.setCursor(Qt.PointingHandCursor)
-        self.setScaledContents(False)
-        self.apply_default_style()
-        
-    def apply_default_style(self):
-        """Apply default styling"""
-        self.setStyleSheet("""
-            ClickableImageLabel {
-                background-color: #44475c;
-                border: 2px solid #6f779a;
-                border-radius: 4px;
-            }
-            ClickableImageLabel:hover {
-                background-color: #3a3d4d;
-                border: 2px solid #BB86FC;
-            }
-        """)
-        
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.clicked.emit()
 
 
 class TypeItem(QFrame):
@@ -362,252 +331,12 @@ class TypeSelector(QWidget):
         return self.types.copy()
 
 
-class TypeEditor(QDialog):
-    """Type editor dialog with improved styling and maximize/minimize buttons"""
-    
-    def __init__(self, profile_type, type_data=None, parent=None):
-        super().__init__(parent)
-        self.profile_type = profile_type
-        self.type_data = type_data or {}
-        self.image_path = type_data.get("image") if type_data else None
-        self.preview_path = type_data.get("preview") if type_data else None
-        
-        self.setWindowTitle(f"{'Edit' if type_data else 'New'} {profile_type.capitalize()} Type")
-        self.setModal(True)
-        self.resize(800, 600)
-        
-        # Enable maximize/minimize buttons
-        self.setWindowFlags(Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | 
-                           Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | 
-                           Qt.WindowCloseButtonHint)
-        
-        # Apply dialog styling
-        self.setStyleSheet("""
-            TypeEditor {
-                background-color: #282a36;
-                color: #ffffff;
-            }
-            TypeEditor QLabel {
-                color: #ffffff;
-                background-color: transparent;
-            }
-            TypeEditor QLineEdit {
-                background-color: #1d1f28;
-                color: #ffffff;
-                border: 1px solid #6f779a;
-                border-radius: 4px;
-                padding: 4px;
-            }
-            TypeEditor QLineEdit:focus {
-                border: 1px solid #BB86FC;
-            }
-            TypeEditor QPushButton {
-                background-color: #1d1f28;
-                color: #BB86FC;
-                border: 2px solid #BB86FC;
-                border-radius: 4px;
-                padding: 6px 12px;
-                min-width: 80px;
-            }
-            TypeEditor QPushButton:hover {
-                background-color: #000000;
-                color: #9965DA;
-                border: 2px solid #9965DA;
-            }
-            TypeEditor QPushButton:pressed {
-                background-color: #BB86FC;
-                color: #1d1f28;
-            }
-        """)
-        
-        self.setup_ui()
-        self.load_data()
-    
-    def setup_ui(self):
-        """Setup UI components"""
-        layout = QVBoxLayout(self)
-        
-        # Main content split
-        content_split = QSplitter(Qt.Horizontal)
-        layout.addWidget(content_split, 1)
-        
-        # Left side - Images and name
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        
-        # Type name
-        left_layout.addWidget(QLabel("Type Name:"))
-        self.name_edit = QLineEdit()
-        left_layout.addWidget(self.name_edit)
-        
-        left_layout.addSpacing(20)
-        
-        # Type image
-        left_layout.addWidget(QLabel("Type Image:"))
-        self.image_label = ClickableImageLabel((150, 150))
-        self.image_label.clicked.connect(self.select_image)
-        self.set_placeholder_image()
-        left_layout.addWidget(self.image_label, alignment=Qt.AlignCenter)
-        
-        left_layout.addSpacing(20)
-        
-        # Preview image
-        left_layout.addWidget(QLabel("Preview Image:"))
-        self.preview_label = ClickableImageLabel((200, 200))
-        self.preview_label.clicked.connect(self.select_preview)
-        self.set_placeholder_preview()
-        left_layout.addWidget(self.preview_label, alignment=Qt.AlignCenter)
-        
-        left_layout.addStretch()
-        content_split.addWidget(left_widget)
-        
-        # Right side - GCode editor
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        
-        # GCode header
-        gcode_header = QHBoxLayout()
-        right_layout.addLayout(gcode_header)
-        
-        gcode_header.addWidget(QLabel("G-Code Template:"))
-        gcode_header.addStretch()
-        
-        upload_btn = QPushButton("Upload")
-        upload_btn.clicked.connect(self.upload_gcode)
-        gcode_header.addWidget(upload_btn)
-        
-        save_btn = QPushButton("Save")
-        save_btn.clicked.connect(self.save_gcode)
-        gcode_header.addWidget(save_btn)
-        
-        # Use the new G-code editor instead of QTextEdit
-        self.gcode_edit = GCodeEditor(self)
-        self.gcode_edit.setPlaceholderText("Enter G-code with variables like {L1}, {L2:10}, etc.")
-        
-        # Connect to variable changes
-        self.gcode_edit.variables_changed.connect(self.on_variables_changed)
-        
-        right_layout.addWidget(self.gcode_edit)
-        
-        content_split.addWidget(right_widget)
-        content_split.setSizes([300, 500])
-        
-        # Dialog buttons
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
-    
-    def on_variables_changed(self, variables):
-        """Handle {} variables detected in G-code"""
-        if variables:
-            var_names = [f"{{{name}{':' + default if default else ''}}}" for name, default in variables]
-            print(f"Variables detected: {var_names}")
-    
-    def load_data(self):
-        """Load existing type data"""
-        if self.type_data:
-            self.name_edit.setText(self.type_data.get("name", ""))
-            self.gcode_edit.setPlainText(self.type_data.get("gcode", ""))
-            
-            if self.image_path:
-                pixmap = QPixmap(self.image_path)
-                if not pixmap.isNull():
-                    self.image_label.setPixmap(pixmap.scaled(150, 150, Qt.KeepAspectRatio))
-            
-            if self.preview_path:
-                pixmap = QPixmap(self.preview_path)
-                if not pixmap.isNull():
-                    self.preview_label.setPixmap(pixmap.scaled(200, 200, Qt.KeepAspectRatio))
-    
-    def get_type_data(self):
-        """Get type data from dialog"""
-        return {
-            "name": self.name_edit.text(),
-            "gcode": self.gcode_edit.toPlainText(),
-            "image": self.image_path,
-            "preview": self.preview_path,
-            "variables": self.gcode_edit.getVariables()
-        }
-    
-    def select_image(self):
-        """Select type image"""
-        default_dir = os.path.join("profiles", "images")
-        os.makedirs(default_dir, exist_ok=True)
-        
-        filename, _ = QFileDialog.getOpenFileName(
-            self, "Select Image", default_dir, "Images (*.png *.jpg *.jpeg *.bmp)"
-        )
-        if filename:
-            self.image_path = filename
-            pixmap = QPixmap(filename)
-            self.image_label.setPixmap(pixmap.scaled(150, 150, Qt.KeepAspectRatio))
-    
-    def select_preview(self):
-        """Select preview image"""
-        default_dir = os.path.join("profiles", "images")
-        os.makedirs(default_dir, exist_ok=True)
-        
-        filename, _ = QFileDialog.getOpenFileName(
-            self, "Select Preview Image", default_dir, "Images (*.png *.jpg *.jpeg *.bmp)"
-        )
-        if filename:
-            self.preview_path = filename
-            pixmap = QPixmap(filename)
-            self.preview_label.setPixmap(pixmap.scaled(200, 200, Qt.KeepAspectRatio))
-    
-    def upload_gcode(self):
-        """Upload G-code from file"""
-        filename, _ = QFileDialog.getOpenFileName(
-            self, "Upload G-Code", "", "G-Code Files (*.gcode *.nc *.txt)"
-        )
-        if filename:
-            try:
-                with open(filename, 'r') as f:
-                    self.gcode_edit.setPlainText(f.read())
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to load file: {str(e)}")
-    
-    def save_gcode(self):
-        """Save G-code to file"""
-        filename, _ = QFileDialog.getSaveFileName(
-            self, "Save G-Code", "", "G-Code Files (*.gcode)"
-        )
-        if filename:
-            try:
-                with open(filename, 'w') as f:
-                    f.write(self.gcode_edit.toPlainText())
-                QMessageBox.information(self, "Success", "G-code saved successfully!")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to save file: {str(e)}")
-    
-    def set_placeholder_image(self):
-        """Set placeholder for type image"""
-        pixmap = QPixmap(150, 150)
-        pixmap.fill(QColor("#44475c"))
-        painter = QPainter(pixmap)
-        painter.setPen(QColor("#bdbdc0"))
-        painter.drawText(pixmap.rect(), Qt.AlignCenter, "Type Image")
-        painter.end()
-        self.image_label.setPixmap(pixmap)
-    
-    def set_placeholder_preview(self):
-        """Set placeholder for preview image"""
-        pixmap = QPixmap(200, 200)
-        pixmap.fill(QColor("#44475c"))
-        painter = QPainter(pixmap)
-        painter.setPen(QColor("#bdbdc0"))
-        painter.drawText(pixmap.rect(), Qt.AlignCenter, "Preview")
-        painter.end()
-        self.preview_label.setPixmap(pixmap)
-
-
 class VariableEditor(QWidget):
-    """Vertical scrollable {} variable editor with Python styling"""
+    """Vertical scrollable L variable editor"""
     
     def __init__(self):
         super().__init__()
-        self.variables = {}  # var_name -> (default_value, line_edit)
+        self.variables = {}  # var_name -> line_edit
         
         self.setup_ui()
         self.apply_styling()
@@ -646,7 +375,7 @@ class VariableEditor(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         
         # Title
-        self.title_label = QLabel("Variables")
+        self.title_label = QLabel("Variables (L)")
         self.title_label.setStyleSheet("QLabel { font-weight: bold; padding: 5px; color: #ffffff; background-color: transparent; }")
         layout.addWidget(self.title_label)
         
@@ -666,7 +395,7 @@ class VariableEditor(QWidget):
         layout.addWidget(scroll, 1)
     
     def update_variables(self, gcode):
-        """Extract variables from gcode and update UI"""
+        """Extract L variables from gcode and update UI"""
         # Clear existing
         while self.vars_layout.count():
             item = self.vars_layout.takeAt(0)
@@ -674,8 +403,8 @@ class VariableEditor(QWidget):
                 item.widget().deleteLater()
         self.variables.clear()
         
-        # Find all variables {VAR} or {VAR:default}
-        pattern = r'\{([A-Z]\d+)(?::([0-9.]+))?\}'
+        # Find L variables {L1} or {L1:default}
+        pattern = r'\{(L\d+)(?::([^}]+))?\}'
         matches = re.findall(pattern, gcode)
         
         # Create unique variables
@@ -700,14 +429,13 @@ class VariableEditor(QWidget):
             
             # Line edit
             line_edit = QLineEdit()
-            line_edit.setValidator(QDoubleValidator())
             if default:
                 line_edit.setText(default)
-            line_edit.setPlaceholderText("0.0")
+            line_edit.setPlaceholderText("Enter value...")
             var_layout.addWidget(line_edit)
             
             self.vars_layout.addWidget(var_widget)
-            self.variables[var_name] = (default, line_edit)
+            self.variables[var_name] = line_edit
         
         # Add stretch
         self.vars_layout.addStretch()
@@ -716,19 +444,142 @@ class VariableEditor(QWidget):
         self.setVisible(len(self.variables) > 0)
     
     def get_variable_values(self):
-        """Get all variable values"""
+        """Get all variable values as dictionary"""
         values = {}
-        for var_name, (default, line_edit) in self.variables.items():
-            text = line_edit.text()
-            values[var_name] = float(text) if text else 0.0
+        for var_name, line_edit in self.variables.items():
+            values[var_name] = line_edit.text()
         return values
     
     def set_variable_values(self, values):
         """Set variable values"""
         for var_name, value in values.items():
             if var_name in self.variables:
-                _, line_edit = self.variables[var_name]
-                line_edit.setText(str(value))
+                self.variables[var_name].setText(str(value))
+
+
+class CustomEditor(QWidget):
+    """Vertical scrollable custom variable editor"""
+    
+    def __init__(self):
+        super().__init__()
+        self.customs = {}  # var_name -> line_edit
+        
+        self.setup_ui()
+        self.apply_styling()
+    
+    def apply_styling(self):
+        """Apply Python-based styling"""
+        self.setStyleSheet("""
+            CustomEditor {
+                background-color: #282a36;
+                color: #ffffff;
+            }
+            CustomEditor QLabel {
+                color: #ffffff;
+                background-color: transparent;
+            }
+            CustomEditor QLineEdit {
+                background-color: #1d1f28;
+                color: #ffffff;
+                border: 1px solid #6f779a;
+                border-radius: 4px;
+                padding: 4px;
+            }
+            CustomEditor QLineEdit:focus {
+                border: 1px solid #BB86FC;
+            }
+            CustomEditor QScrollArea {
+                background-color: #1d1f28;
+                border: 1px solid #6f779a;
+                border-radius: 4px;
+            }
+        """)
+    
+    def setup_ui(self):
+        """Setup UI components"""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Title
+        self.title_label = QLabel("Custom Variables")
+        self.title_label.setStyleSheet("QLabel { font-weight: bold; padding: 5px; color: #ffffff; background-color: transparent; }")
+        layout.addWidget(self.title_label)
+        
+        # Scroll area
+        scroll = QScrollArea()
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setWidgetResizable(True)
+        
+        # Container
+        container = QWidget()
+        self.customs_layout = QVBoxLayout(container)
+        self.customs_layout.setSpacing(5)
+        self.customs_layout.setContentsMargins(5, 5, 5, 5)
+        
+        scroll.setWidget(container)
+        layout.addWidget(scroll, 1)
+    
+    def update_customs(self, gcode):
+        """Extract custom variables from gcode and update UI"""
+        # Clear existing
+        while self.customs_layout.count():
+            item = self.customs_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self.customs.clear()
+        
+        # Find custom variables (not L or $ variables) - parse name:default correctly
+        pattern = r'\{([^L$][^:}]*?)(?::([^}]+))?\}'
+        matches = re.findall(pattern, gcode)
+        
+        # Create unique customs
+        unique_customs = {}
+        for var_name, default in matches:
+            if var_name not in unique_customs:
+                unique_customs[var_name] = default
+        
+        # Create editors
+        for var_name in sorted(unique_customs.keys()):
+            default = unique_customs[var_name]
+            
+            # Custom widget
+            custom_widget = QWidget()
+            custom_layout = QVBoxLayout(custom_widget)
+            custom_layout.setContentsMargins(0, 0, 0, 0)
+            
+            # Label
+            label = QLabel(f"{var_name}:")
+            custom_layout.addWidget(label)
+            
+            # Line edit - supports any content including entire lines
+            line_edit = QLineEdit()
+            if default:
+                line_edit.setText(default)
+            line_edit.setPlaceholderText("Enter value or entire line...")
+            custom_layout.addWidget(line_edit)
+            
+            self.customs_layout.addWidget(custom_widget)
+            self.customs[var_name] = line_edit
+        
+        # Add stretch
+        self.customs_layout.addStretch()
+        
+        # Update visibility
+        self.setVisible(len(self.customs) > 0)
+    
+    def get_custom_values(self):
+        """Get all custom values as dictionary"""
+        values = {}
+        for var_name, line_edit in self.customs.items():
+            values[var_name] = line_edit.text()
+        return values
+    
+    def set_custom_values(self, values):
+        """Set custom values"""
+        for var_name, value in values.items():
+            if var_name in self.customs:
+                self.customs[var_name].setText(str(value))
 
 
 class ProfileEditor(QDialog):
@@ -743,7 +594,7 @@ class ProfileEditor(QDialog):
         
         self.setWindowTitle(f"{'Edit' if profile_data else 'New'} {profile_type.capitalize()} Profile")
         self.setModal(True)
-        self.resize(900, 700)
+        self.resize(1100, 700)
         
         # Enable maximize/minimize buttons
         self.setWindowFlags(Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | 
@@ -793,39 +644,32 @@ class ProfileEditor(QDialog):
         splitter = QSplitter(Qt.Horizontal)
         content_layout.addWidget(splitter)
         
-        # Left side - Variables and profile image
+        
+        # Left - Variables
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         
-        # Profile image
-        left_layout.addWidget(QLabel("Profile Image:"))
-        self.profile_image_label = ClickableImageLabel((150, 150))
-        self.profile_image_label.clicked.connect(self.select_profile_image)
-        self.set_profile_placeholder()
-        left_layout.addWidget(self.profile_image_label, alignment=Qt.AlignCenter)
-        
-        left_layout.addSpacing(20)
-        
-        # Variables
+        # Variables editor
         self.variable_editor = VariableEditor()
         self.variable_editor.setVisible(False)
-        left_layout.addWidget(self.variable_editor, 1)
+        left_layout.addWidget(self.variable_editor)
         
+        # Custom editor
+        self.custom_editor = CustomEditor()
+        self.custom_editor.setVisible(False)
+        left_layout.addWidget(self.custom_editor)
+        
+        left_layout.addStretch()
         splitter.addWidget(left_widget)
         
-        # Right side - Profile name and preview
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
         
-        # Profile name
-        right_layout.addWidget(QLabel("Profile Name:"))
-        self.profile_name_edit = QLineEdit()
-        right_layout.addWidget(self.profile_name_edit)
-        
-        right_layout.addSpacing(20)
+            
+        # Middle side - Type preview
+        middle_widget = QWidget()
+        middle_layout = QVBoxLayout(middle_widget)
         
         # Type preview
-        right_layout.addWidget(QLabel("Type Preview:"))
+        middle_layout.addWidget(QLabel("Type Preview:"))
         # Use ScaledImageLabel for preview to expand and maintain aspect ratio
         self.preview_image_label = ScaledImageLabel()
         self.preview_image_label.setAlignment(Qt.AlignCenter)
@@ -839,12 +683,36 @@ class ProfileEditor(QDialog):
                 color: #bdbdc0;
             }
         """)
-        right_layout.addWidget(self.preview_image_label, 1)
+        middle_layout.addWidget(self.preview_image_label, 1)
         
+        splitter.addWidget(middle_widget)
+        
+        
+        # Right side - Profile info
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        
+        # Profile name
+        right_layout.addWidget(QLabel("Profile Name:"))
+        self.profile_name_edit = QLineEdit()
+        right_layout.addWidget(self.profile_name_edit)
+        
+        right_layout.addSpacing(20)
+        
+        # Profile image
+        right_layout.addWidget(QLabel("Profile Image:"))
+        self.profile_image_label = ClickableImageLabel((150, 150))
+        self.profile_image_label.clicked.connect(self.select_profile_image)
+        self.set_profile_placeholder()
+        right_layout.addWidget(self.profile_image_label, alignment=Qt.AlignCenter)
+        
+        right_layout.addStretch()
         splitter.addWidget(right_widget)
+
         
         splitter.setStretchFactor(0, 1)   # left side
-        splitter.setStretchFactor(1, 3)   # right side gets more space
+        splitter.setStretchFactor(1, 1)   # middle side
+        splitter.setStretchFactor(2, 2)   # right side gets more space
         
         # Dialog buttons
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -897,22 +765,29 @@ class ProfileEditor(QDialog):
         data = {
             "name": self.profile_name_edit.text(),
             "type": self.current_type["name"] if self.current_type else None,
-            "variables": self.variable_editor.get_variable_values(),
+            "l_variables": self.variable_editor.get_variable_values(),
+            "custom_variables": self.custom_editor.get_custom_values(),
             "image": self.profile_image_path
         }
+        
+        print(f"Profile data created: {data}")
         return data
     
     def on_type_selected(self, type_data):
         """Handle type selection"""
         self.current_type = type_data
         
-        # Update variables using variables from type
-        variables = type_data.get("variables", [])
-        self.variable_editor.update_variables(type_data.get("gcode", ""))
+        # Update variable editors using gcode from type
+        gcode = type_data.get("gcode", "")
+        self.variable_editor.update_variables(gcode)
+        self.custom_editor.update_customs(gcode)
         
         # Load saved variable values if editing
-        if self.profile_data.get("variables") and self.profile_data.get("type") == type_data["name"]:
-            self.variable_editor.set_variable_values(self.profile_data["variables"])
+        if self.profile_data.get("type") == type_data["name"]:
+            if self.profile_data.get("l_variables"):
+                self.variable_editor.set_variable_values(self.profile_data["l_variables"])
+            if self.profile_data.get("custom_variables"):
+                self.custom_editor.set_custom_values(self.profile_data["custom_variables"])
         
         # Update preview with scaling that expands to fill space
         if type_data.get("preview"):
