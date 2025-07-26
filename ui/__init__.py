@@ -5,6 +5,8 @@ from .frame_tab import FrameTab
 from .generate_tab import GenerateTab
 from .profile_editor import ProfileEditor
 from .preview_dialog import PreviewDialog
+from .profile_gcode_dialog import ProfileGCodeDialog
+from .order_widget import OrderWidget
 
 __all__ = [
     'MainWindow',
@@ -12,5 +14,7 @@ __all__ = [
     'FrameTab',
     'GenerateTab',
     'ProfileEditor',
-    'PreviewDialog'
+    'PreviewDialog',
+    'ProfileGCodeDialog',
+    'OrderWidget'
 ]

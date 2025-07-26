@@ -4,6 +4,8 @@ from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
                              QRadioButton, QSpinBox)
 from PySide6.QtCore import Signal, Qt, QTimer
 from PySide6.QtGui import QDoubleValidator, QPainter, QColor, QPen, QBrush
+from .profile_gcode_dialog import ProfileGCodeDialog
+from .order_widget import OrderWidget
 
 
 class FramePreview(QWidget):
@@ -55,7 +57,6 @@ class FramePreview(QWidget):
         frame_height_scaled = self.frame_height * scale
         frame_width_scaled = 100*scale  # Fixed visual width
         
-        
         # PMs dimensions
         large_PM = [300*scale,130*scale]
         small_PM = [152*scale,82*scale]
@@ -66,7 +67,7 @@ class FramePreview(QWidget):
         start_x = widget_width / 2
         start_y = (widget_height - frame_height_scaled) / 2
         
-        # Draw PMs large (removed the > 0 check)
+        # Draw PMs large
         for pm_pos in self.pm_positions:
             pm_y = start_y + pm_pos * scale  # Position from top
             # Large rectangle below frames
@@ -89,7 +90,7 @@ class FramePreview(QWidget):
         painter.setBrush(QBrush(QColor(160, 82, 45)))  # Light brown
         painter.drawRect(start_x + frame_width_scaled/2 + frame_gap/2, start_y, frame_width_scaled/2, frame_height_scaled)
         
-        # Draw PMs small (removed the > 0 check)
+        # Draw PMs small
         painter.setBrush(QBrush(QColor(128, 128, 128)))  # Grey
         painter.setPen(QPen(QColor(64, 64, 64), 2))
         
@@ -133,6 +134,30 @@ class FramePreview(QWidget):
                 painter.drawRect(hinge_x, hinge_y - hinge_height/2, hinge_width, hinge_height)
 
 
+class ClickableLabel(QLabel):
+    """Clickable label that looks like a link"""
+    clicked = Signal()
+    
+    def __init__(self, text):
+        super().__init__(text)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setStyleSheet("""
+            QLabel {
+                color: #BB86FC;
+                text-decoration: underline;
+                background-color: transparent;
+            }
+            QLabel:hover {
+                color: #9965DA;
+            }
+        """)
+    
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
+
+
 class FrameTab(QWidget):
     """Frame configuration tab with three-panel layout"""
     back_clicked = Signal()
@@ -140,6 +165,9 @@ class FrameTab(QWidget):
     configuration_changed = Signal(dict)
     
     # Configuration parameters - easily adjustable
+    MAX_FRAME_HEIGHT = 2500  # Maximum frame height
+    MIN_FRAME_HEIGHT = 840   # Minimum frame height
+    
     PM_CONFIG = {
         'sizes': {
             1: [265, 140],  # PM1 dimensions [width, height]
@@ -147,7 +175,6 @@ class FrameTab(QWidget):
             3: [175, 240],  # PM3 dimensions
             4: [240, 120]   # PM4 dimensions
         },
-        'default_pm1_position': -25,
         'lock_safety_distance': 170,
         'hinge_safety_distance': 170,
         'min_range_size': 120
@@ -158,20 +185,28 @@ class FrameTab(QWidget):
         self.hinge_positions = []
         self.hinge_active = []
         self.profiles = {}
+        self.profile_data = {}  # Store full profile data
+        self.execution_order = []
         
         self.setup_ui()
         self.connect_signals()
         self.apply_styling()
         
         # Initialize with default values
-        self.update_hinge_count(2)
-        # Set first PM to default position
-        self.pm_inputs[0].setText(str(self.PM_CONFIG['default_pm1_position']))
+        self.update_hinge_count(3)  # Default to 3 hinges
         
-        # FIXED: Apply auto-position states after UI setup
-        self.on_pm_auto_changed()  # This will disable PM2-4 inputs since auto is checked
-        self.on_lock_auto_changed()  # This will disable lock position input since auto is checked
-        self.on_hinge_auto_changed()  # This will disable hinge inputs since auto is checked
+        # Set default PM positions
+        default_positions = [-25, 700, 1230, 1540]
+        for i, pos in enumerate(default_positions):
+            self.pm_inputs[i].setText(str(pos))
+        
+        # Set PM auto to unchecked by default
+        self.pm_auto_check.setChecked(False)
+        
+        # Apply auto-position states after UI setup
+        self.on_pm_auto_changed()
+        self.on_lock_auto_changed()
+        self.on_hinge_auto_changed()
         
         # Update auto positions after everything is setup
         self.update_all_auto_positions()
@@ -332,55 +367,56 @@ class FrameTab(QWidget):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
-        # Upper part - Frame dimensions and offsets
-        upper_group = QGroupBox("Frame Configuration")
-        upper_layout = QFormLayout()
-        upper_group.setLayout(upper_layout)
+        # Frame dimensions group
+        frame_group = QGroupBox("Frame Configuration")
+        frame_layout = QFormLayout()
+        frame_group.setLayout(frame_layout)
         
-        # Frame height with minimum value enforcement
+        # Frame height with min/max validation
         self.height_input = QLineEdit("2100")
-        self.height_input.setValidator(QDoubleValidator(840, 10000, 2))
-        upper_layout.addRow("Frame Height (mm):", self.height_input)
+        self.height_input.setValidator(QDoubleValidator(self.MIN_FRAME_HEIGHT, self.MAX_FRAME_HEIGHT, 2))
+        frame_layout.addRow("Frame Height (mm):", self.height_input)
         
         # Machine offsets
         self.x_offset_input = QLineEdit("0")
         self.x_offset_input.setValidator(QDoubleValidator(-1000, 1000, 2))
-        upper_layout.addRow("Machine X Offset:", self.x_offset_input)
+        frame_layout.addRow("Machine X Offset:", self.x_offset_input)
         
         self.y_offset_input = QLineEdit("0")
         self.y_offset_input.setValidator(QDoubleValidator(-1000, 1000, 2))
-        upper_layout.addRow("Machine Y Offset:", self.y_offset_input)
+        frame_layout.addRow("Machine Y Offset:", self.y_offset_input)
         
         self.z_offset_input = QLineEdit("0")
         self.z_offset_input.setValidator(QDoubleValidator(-1000, 1000, 2))
-        upper_layout.addRow("Machine Z Offset:", self.z_offset_input)
+        frame_layout.addRow("Machine Z Offset:", self.z_offset_input)
         
-        layout.addWidget(upper_group)
+        layout.addWidget(frame_group)
         
-        # Lower part - PM positions
+        # PM positions group
         pm_group = QGroupBox("PM Positions")
         pm_layout = QVBoxLayout()
         pm_group.setLayout(pm_layout)
         
         # PM auto checkbox
         self.pm_auto_check = QCheckBox("Auto-position")
-        self.pm_auto_check.setChecked(True)
+        self.pm_auto_check.setChecked(False)  # Default to unchecked
         pm_layout.addWidget(self.pm_auto_check)
         
-        # PM position inputs container
+        # PM position inputs
         self.pm_inputs_widget = QWidget()
         pm_inputs_layout = QFormLayout(self.pm_inputs_widget)
         pm_layout.addWidget(self.pm_inputs_widget)
         
-        # PM position inputs
         self.pm_inputs = []
         for i in range(4):
             pm_input = QLineEdit("0")
-            pm_input.setValidator(QDoubleValidator(-100, 10000, 2))
+            pm_input.setValidator(QDoubleValidator(-100, self.MAX_FRAME_HEIGHT, 2))
             pm_inputs_layout.addRow(f"PM{i+1} Position:", pm_input)
             self.pm_inputs.append(pm_input)
         
         layout.addWidget(pm_group)
+        
+        # Remove the profile G-code editor group from left panel
         layout.addStretch()
         
         return widget
@@ -390,10 +426,13 @@ class FrameTab(QWidget):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
-        # Orientation switch
+        # Orientation switch with G-code edit links
         orientation_group = QGroupBox("Door Orientation")
-        orientation_layout = QHBoxLayout()
+        orientation_layout = QVBoxLayout()
         orientation_group.setLayout(orientation_layout)
+        
+        # Radio buttons layout
+        radio_layout = QHBoxLayout()
         
         self.orientation_group = QButtonGroup()
         self.right_radio = QRadioButton("Right (droite)")
@@ -403,9 +442,19 @@ class FrameTab(QWidget):
         self.orientation_group.addButton(self.right_radio)
         self.orientation_group.addButton(self.left_radio)
         
-        orientation_layout.addWidget(self.right_radio)
-        orientation_layout.addWidget(self.left_radio)
-        orientation_layout.addStretch()
+        radio_layout.addWidget(self.right_radio)
+        self.right_gcode_link = ClickableLabel("Edit")
+        self.right_gcode_link.clicked.connect(self.edit_right_gcode)
+        radio_layout.addWidget(self.right_gcode_link)
+        
+        radio_layout.addStretch()
+        
+        radio_layout.addWidget(self.left_radio)
+        self.left_gcode_link = ClickableLabel("Edit")
+        self.left_gcode_link.clicked.connect(self.edit_left_gcode)
+        radio_layout.addWidget(self.left_gcode_link)
+        
+        orientation_layout.addLayout(radio_layout)
         
         layout.addWidget(orientation_group)
         
@@ -420,7 +469,7 @@ class FrameTab(QWidget):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
-        # Upper part - Lock configuration
+        # Lock configuration
         lock_group = QGroupBox("Lock Configuration")
         lock_layout = QVBoxLayout()
         lock_group.setLayout(lock_layout)
@@ -433,7 +482,7 @@ class FrameTab(QWidget):
         
         lock_auto_layout.addWidget(QLabel("Position:"))
         self.lock_position_input = QLineEdit("1050")
-        self.lock_position_input.setValidator(QDoubleValidator(0, 3000, 2))
+        self.lock_position_input.setValidator(QDoubleValidator(0, self.MAX_FRAME_HEIGHT, 2))
         self.lock_position_input.setEnabled(False)
         lock_auto_layout.addWidget(self.lock_position_input)
         
@@ -453,7 +502,7 @@ class FrameTab(QWidget):
         
         layout.addWidget(lock_group)
         
-        # Lower part - Hinge configuration
+        # Hinge configuration
         hinge_group = QGroupBox("Hinge Configuration")
         hinge_layout = QVBoxLayout()
         hinge_group.setLayout(hinge_layout)
@@ -463,7 +512,7 @@ class FrameTab(QWidget):
         count_layout.addWidget(QLabel("Number of Hinges:"))
         self.hinge_count_spin = QSpinBox()
         self.hinge_count_spin.setRange(0, 4)
-        self.hinge_count_spin.setValue(2)
+        self.hinge_count_spin.setValue(3)  # Default to 3
         count_layout.addWidget(self.hinge_count_spin)
         count_layout.addStretch()
         hinge_layout.addLayout(count_layout)
@@ -488,6 +537,17 @@ class FrameTab(QWidget):
         hinge_layout.addLayout(z_offset_layout)
         
         layout.addWidget(hinge_group)
+        
+        # Execution order widget
+        order_group = QGroupBox("Component Order")
+        order_layout = QVBoxLayout()
+        order_group.setLayout(order_layout)
+        
+        self.order_widget = OrderWidget()
+        self.order_widget.order_changed.connect(self.on_order_changed)
+        order_layout.addWidget(self.order_widget)
+        
+        layout.addWidget(order_group)
         layout.addStretch()
         
         return widget
@@ -526,7 +586,7 @@ class FrameTab(QWidget):
         # Lock configuration
         self.lock_auto_check.stateChanged.connect(self.on_lock_auto_changed)
         self.lock_position_input.textChanged.connect(self.on_lock_position_changed)
-        self.lock_active_check.stateChanged.connect(self.on_config_changed)
+        self.lock_active_check.stateChanged.connect(self.on_lock_active_changed)
         self.lock_y_offset_input.textChanged.connect(self.on_config_changed)
         
         # Hinge configuration
@@ -536,20 +596,22 @@ class FrameTab(QWidget):
         
         # Orientation
         self.orientation_group.buttonClicked.connect(self.on_config_changed)
-        
+    
     def on_pm_position_changed(self):
         """Handle manual PM position changes"""
         self.validate_pm_positions()
         self.on_config_changed()
     
     def enforce_min_height(self):
-        """Enforce minimum frame height of 840mm"""
+        """Enforce minimum frame height"""
         try:
             height = float(self.height_input.text() or 0)
-            if height < 840:
-                self.height_input.setText("840")
+            if height < self.MIN_FRAME_HEIGHT:
+                self.height_input.setText(str(self.MIN_FRAME_HEIGHT))
+            elif height > self.MAX_FRAME_HEIGHT:
+                self.height_input.setText(str(self.MAX_FRAME_HEIGHT))
         except ValueError:
-            self.height_input.setText("840")
+            self.height_input.setText(str(self.MIN_FRAME_HEIGHT))
     
     def update_hinge_count(self, count):
         """Update hinge position inputs based on count"""
@@ -566,14 +628,13 @@ class FrameTab(QWidget):
         
         # Create new inputs
         for i in range(count):
-            # Create horizontal layout for each hinge
             hinge_layout = QHBoxLayout()
             
             hinge_layout.addWidget(QLabel(f"Hinge {i+1}:"))
             
             # Position input
             position_input = QLineEdit("0")
-            position_input.setValidator(QDoubleValidator(0,3000, 2))
+            position_input.setValidator(QDoubleValidator(0, self.MAX_FRAME_HEIGHT, 2))
             position_input.textChanged.connect(self.on_hinge_position_changed)
             hinge_layout.addWidget(position_input)
             self.hinge_inputs.append(position_input)
@@ -581,7 +642,7 @@ class FrameTab(QWidget):
             # Active checkbox
             active_check = QCheckBox("Active")
             active_check.setChecked(True)
-            active_check.stateChanged.connect(self.on_config_changed)
+            active_check.stateChanged.connect(self.on_hinge_active_changed)
             hinge_layout.addWidget(active_check)
             self.hinge_active_checks.append(active_check)
             
@@ -596,6 +657,7 @@ class FrameTab(QWidget):
         
         # Update auto positions after creating new inputs
         self.update_all_auto_positions()
+        self.update_order_widget()
         self.on_config_changed()
     
     def on_frame_height_changed(self):
@@ -614,8 +676,13 @@ class FrameTab(QWidget):
         self.on_config_changed()
     
     def on_lock_position_changed(self):
-        """Handle lock position changes - triggers PM auto update"""
+        """Handle lock position changes"""
         self.update_all_auto_positions()
+        self.on_config_changed()
+    
+    def on_lock_active_changed(self):
+        """Handle lock active state changes"""
+        self.update_order_widget()
         self.on_config_changed()
     
     def on_hinge_auto_changed(self):
@@ -632,8 +699,13 @@ class FrameTab(QWidget):
         self.on_config_changed()
     
     def on_hinge_position_changed(self):
-        """Handle hinge position changes - triggers PM auto update"""
+        """Handle hinge position changes"""
         self.update_all_auto_positions()
+        self.on_config_changed()
+    
+    def on_hinge_active_changed(self):
+        """Handle hinge active state changes"""
+        self.update_order_widget()
         self.on_config_changed()
     
     def on_pm_auto_changed(self):
@@ -651,6 +723,19 @@ class FrameTab(QWidget):
             self.update_all_auto_positions()
         
         self.on_config_changed()
+    
+    def on_order_changed(self, order):
+        """Handle execution order changes"""
+        self.execution_order = order
+        self.on_config_changed()
+    
+    def update_order_widget(self):
+        """Update the order widget based on active components"""
+        lock_active = self.lock_active_check.isChecked()
+        hinge_count = self.hinge_count_spin.value()
+        hinge_active = [check.isChecked() for check in self.hinge_active_checks]
+        
+        self.order_widget.update_items(lock_active, hinge_count, hinge_active)
     
     def update_all_auto_positions(self):
         """Update all auto positions in order: lock -> hinges -> PMs"""
@@ -706,8 +791,6 @@ class FrameTab(QWidget):
                     self.hinge_inputs[2].setText(f"{last_pos:.1f}")
                     
                     # Middle positioned so lower-to-middle is 1.5x upper-to-middle
-                    # If first is at 150 and last at last_pos:
-                    # middle = first + (last - first) / 2.5
                     middle_pos = 150 + (last_pos - 150) / 2.5
                     self.hinge_inputs[1].setText(f"{middle_pos:.1f}")
                 elif count == 4:
@@ -729,15 +812,7 @@ class FrameTab(QWidget):
             pass
     
     def calculate_auto_pm_positions(self):
-        """
-        Calculate automatic PM positions following the improved algorithm:
-        1. PM1 is at user-defined position (default -25)
-        2. Define available range for other PMs
-        3. Remove obstacle zones (lock/hinges with safety distances)
-        4. Filter ranges that are too small
-        5. Place PM4 at end of last valid range
-        6. Find optimal positions for PM2 and PM3
-        """
+        """Calculate automatic PM positions following the improved algorithm"""
         config = self.PM_CONFIG
         
         try:
@@ -746,7 +821,7 @@ class FrameTab(QWidget):
                 return
             
             # Step 1: Get PM1 position (user-controlled)
-            pm1_pos = float(self.pm_inputs[0].text() or config['default_pm1_position'])
+            pm1_pos = float(self.pm_inputs[0].text() or -25)
             
             # Step 2: Calculate minimum distance from PM1 to PM2
             pm1_size = config['sizes'][1]
@@ -806,7 +881,7 @@ class FrameTab(QWidget):
             
         except ValueError:
             # Error in calculations - use fallback
-            pm1_pos = float(self.pm_inputs[0].text() or config['default_pm1_position'])
+            pm1_pos = float(self.pm_inputs[0].text() or -25)
             self._fallback_pm_positions(pm1_pos)
     
     def _calculate_valid_ranges(self, range_start, range_end, obstacles):
@@ -860,7 +935,6 @@ class FrameTab(QWidget):
             return pm2_pos, pm3_pos
         
         # Try to place PM2 and PM3 in valid ranges
-        # Find the best valid positions
         best_pm2 = pm2_pos
         best_pm3 = pm3_pos
         
@@ -988,15 +1062,10 @@ class FrameTab(QWidget):
         # Check each PM against obstacles
         lock_safety = config['lock_safety_distance'] 
         hinge_safety = config['hinge_safety_distance']
+        safety_distance = max(lock_safety, hinge_safety)
         
         for i, pm_pos in enumerate(pm_positions):
             for obstacle_pos in obstacles:
-                # Use appropriate safety distance based on obstacle type
-                safety_distance = lock_safety  # Default to lock safety distance
-                # In practice, you'd need to track which obstacle is which
-                # For now, using the larger of the two distances
-                safety_distance = max(lock_safety, hinge_safety)
-                
                 if abs(pm_pos - obstacle_pos) < safety_distance:
                     errors[i] = True
         
@@ -1014,6 +1083,40 @@ class FrameTab(QWidget):
                 pm_input.setProperty("class", "error")
                 pm_input.style().polish(pm_input)
     
+    def edit_right_gcode(self):
+        """Open G-code editor for right orientation"""
+        # Get current G-code for right orientation
+        current_gcode = ""
+        if 'hinge' in self.profile_data:
+            current_gcode = self.profile_data['hinge'].get('gcode_right', '')
+        
+        from PySide6.QtWidgets import QDialog
+        dialog = ProfileGCodeDialog("Right Door G-Code", current_gcode, self)
+        if dialog.exec_() == QDialog.Accepted:
+            # Ensure hinge profile data exists
+            if 'hinge' not in self.profile_data:
+                self.profile_data['hinge'] = {}
+            # Update with new G-code
+            self.profile_data['hinge']['gcode_right'] = dialog.get_gcode()
+            self.on_config_changed()
+    
+    def edit_left_gcode(self):
+        """Open G-code editor for left orientation"""
+        # Get current G-code for left orientation  
+        current_gcode = ""
+        if 'hinge' in self.profile_data:
+            current_gcode = self.profile_data['hinge'].get('gcode_left', '')
+        
+        from PySide6.QtWidgets import QDialog
+        dialog = ProfileGCodeDialog("Left Door G-Code", current_gcode, self)
+        if dialog.exec_() == QDialog.Accepted:
+            # Ensure hinge profile data exists
+            if 'hinge' not in self.profile_data:
+                self.profile_data['hinge'] = {}
+            # Update with new G-code
+            self.profile_data['hinge']['gcode_left'] = dialog.get_gcode()
+            self.on_config_changed()
+    
     def on_config_changed(self):
         """Handle any configuration change"""
         config = self.get_configuration()
@@ -1021,7 +1124,7 @@ class FrameTab(QWidget):
         self.configuration_changed.emit(config)
     
     def get_configuration(self):
-        """Get current frame configuration"""
+        """Get current frame configuration including $ variables"""
         # Get hinge positions and active states
         hinge_positions = []
         hinge_active = []
@@ -1043,16 +1146,53 @@ class FrameTab(QWidget):
             except ValueError:
                 pm_positions.append(0)
         
-        config = {
-            'width': 1200,  # Fixed for now
-            'height': float(self.height_input.text() or 0),
-            'x_offset': float(self.x_offset_input.text() or 0),
-            'y_offset': float(self.y_offset_input.text() or 0),
-            'z_offset': float(self.z_offset_input.text() or 0),
-            'pm_positions': pm_positions,
-            'pm_auto': self.pm_auto_check.isChecked(),
+        # Generate $ variables for G-code replacement
+        dollar_vars = {
+            'frame_height': float(self.height_input.text() or 0),
+            'machine_x_offset': float(self.x_offset_input.text() or 0),
+            'machine_y_offset': float(self.y_offset_input.text() or 0),
+            'machine_z_offset': float(self.z_offset_input.text() or 0),
+            'pm1_position': pm_positions[0] if len(pm_positions) > 0 else 0,
+            'pm2_position': pm_positions[1] if len(pm_positions) > 1 else 0,
+            'pm3_position': pm_positions[2] if len(pm_positions) > 2 else 0,
+            'pm4_position': pm_positions[3] if len(pm_positions) > 3 else 0,
             'lock_position': float(self.lock_position_input.text() or 0),
             'lock_y_offset': float(self.lock_y_offset_input.text() or 0),
+            'lock_active': 1 if self.lock_active_check.isChecked() else 0,
+        }
+        
+        # Add hinge $ variables
+        for i in range(4):  # Always generate for 4 hinges
+            if i < len(hinge_positions):
+                dollar_vars[f'hinge{i+1}_position'] = hinge_positions[i]
+                dollar_vars[f'hinge{i+1}_active'] = 1 if hinge_active[i] else 0
+            else:
+                dollar_vars[f'hinge{i+1}_position'] = 0
+                dollar_vars[f'hinge{i+1}_active'] = 0
+        
+        # Add order $ variables
+        order_map = {}
+        for idx, item_id in enumerate(self.execution_order):
+            order_map[item_id] = idx + 1
+        
+        # Lock order
+        dollar_vars['lock_order'] = order_map.get('lock', 0)
+        
+        # Hinge orders
+        for i in range(4):
+            hinge_key = f'hinge{i+1}'
+            dollar_vars[f'hinge{i+1}_order'] = order_map.get(hinge_key, 0)
+        
+        config = {
+            'width': 1200,  # Fixed for now
+            'height': dollar_vars['frame_height'],
+            'x_offset': dollar_vars['machine_x_offset'],
+            'y_offset': dollar_vars['machine_y_offset'],
+            'z_offset': dollar_vars['machine_z_offset'],
+            'pm_positions': pm_positions,
+            'pm_auto': self.pm_auto_check.isChecked(),
+            'lock_position': dollar_vars['lock_position'],
+            'lock_y_offset': dollar_vars['lock_y_offset'],
             'lock_active': self.lock_active_check.isChecked(),
             'lock_auto': self.lock_auto_check.isChecked(),
             'hinge_count': self.hinge_count_spin.value(),
@@ -1061,21 +1201,44 @@ class FrameTab(QWidget):
             'hinge_y_offset': float(self.hinge_z_offset_input.text() or 0),
             'hinge_auto': self.hinge_auto_check.isChecked(),
             'orientation': 'left' if self.left_radio.isChecked() else 'right',
-            'profiles': self.profiles
+            'execution_order': self.execution_order,
+            'profiles': self.profiles,
+            'profile_data': self.profile_data,  # Include full profile data
+            'dollar_variables': dollar_vars  # $ variables for G-code replacement
         }
         
         return config
     
-    def set_profiles(self, hinge_profile, lock_profile):
+    def set_profiles(self, hinge_profile_name, lock_profile_name):
         """Set selected profiles from previous tab"""
         self.profiles = {
-            'hinge': hinge_profile,
-            'lock': lock_profile
+            'hinge': hinge_profile_name,
+            'lock': lock_profile_name
+        }
+        
+        # Initialize profile data structure for G-code storage
+        if 'hinge' not in self.profile_data:
+            self.profile_data['hinge'] = {
+                'gcode_right': '',
+                'gcode_left': ''
+            }
+        if 'lock' not in self.profile_data:
+            self.profile_data['lock'] = {
+                'gcode': ''
+            }
+        
+        # Update order widget after profiles are set
+        self.update_order_widget()
+    
+    def set_profile_data(self, hinge_profile_data, lock_profile_data):
+        """Set full profile data from previous tab"""
+        self.profile_data = {
+            'hinge': hinge_profile_data or {'gcode_right': '', 'gcode_left': ''},
+            'lock': lock_profile_data or {'gcode': ''}
         }
     
     def on_next_clicked(self):
         """Validate configuration and proceed"""
-        # Basic validation
         config = self.get_configuration()
         
         if config['height'] <= 0:
