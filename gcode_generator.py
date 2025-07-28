@@ -6,7 +6,7 @@ from datetime import datetime
 
 
 class GCodeGenerator(QObject):
-    """Core G-code generation engine with real-time updates"""
+    """Enhanced G-code generation engine with $ variable support"""
     
     files_updated = Signal(dict)  # Emits generated files when updated
     
@@ -36,8 +36,54 @@ class GCodeGenerator(QObject):
             }
         }
         
+        # Available $ variables with descriptions
+        self.dollar_variables_info = {
+            # Frame variables
+            'frame_height': 'Height of the door frame in mm',
+            'frame_width': 'Width of the door frame in mm (fixed at 1200mm)',
+            
+            # Machine offsets
+            'machine_x_offset': 'Machine X axis offset in mm',
+            'machine_y_offset': 'Machine Y axis offset in mm', 
+            'machine_z_offset': 'Machine Z axis offset in mm',
+            
+            # PM positions
+            'pm1_position': 'Position of PM1 from top of frame in mm',
+            'pm2_position': 'Position of PM2 from top of frame in mm',
+            'pm3_position': 'Position of PM3 from top of frame in mm',
+            'pm4_position': 'Position of PM4 from top of frame in mm',
+            
+            # Lock configuration
+            'lock_position': 'Position of lock from top of frame in mm',
+            'lock_y_offset': 'Lock Y-axis offset in mm',
+            'lock_active': 'Lock active state (1=active, 0=inactive)',
+            'lock_order': 'Lock execution order (0 if inactive)',
+            
+            # Hinge configuration
+            'hinge1_position': 'Position of hinge 1 from top of frame in mm',
+            'hinge2_position': 'Position of hinge 2 from top of frame in mm',
+            'hinge3_position': 'Position of hinge 3 from top of frame in mm',
+            'hinge4_position': 'Position of hinge 4 from top of frame in mm',
+            'hinge1_active': 'Hinge 1 active state (1=active, 0=inactive)',
+            'hinge2_active': 'Hinge 2 active state (1=active, 0=inactive)',
+            'hinge3_active': 'Hinge 3 active state (1=active, 0=inactive)',
+            'hinge4_active': 'Hinge 4 active state (1=active, 0=inactive)',
+            'hinge1_order': 'Hinge 1 execution order (0 if inactive)',
+            'hinge2_order': 'Hinge 2 execution order (0 if inactive)', 
+            'hinge3_order': 'Hinge 3 execution order (0 if inactive)',
+            'hinge4_order': 'Hinge 4 execution order (0 if inactive)',
+            'hinge_y_offset': 'Global hinge Y-axis offset in mm',
+            
+            # Door orientation
+            'orientation': 'Door orientation ("left" or "right")',
+        }
+        
         # Load types data on startup
         self.load_types_data()
+    
+    def get_dollar_variables_info(self):
+        """Get dictionary of available $ variables with descriptions"""
+        return self.dollar_variables_info.copy()
     
     def load_types_data(self):
         """Load types data from profiles/current.json"""
@@ -99,17 +145,17 @@ class GCodeGenerator(QObject):
         )
     
     def _generate_file(self, side, file_type):
-        """Generate individual file content"""
+        """Generate individual file content with $ variable substitution"""
         # Get base G-code template
         base_gcode = ""
         
         if file_type == 'frame':
-            if side == 'left' and self.profiles['left_frame']:
-                base_gcode = self.profiles['left_frame']
-            elif side == 'right' and self.profiles['right_frame']:
-                base_gcode = self.profiles['right_frame']
-            else:
-                return ""
+            # Use frame G-code from frame configuration
+            frame_data = self.frame_config.get('profile_data', {}).get('hinge', {})
+            if side == 'left':
+                base_gcode = frame_data.get('gcode_left', '')
+            else:  # right
+                base_gcode = frame_data.get('gcode_right', '')
         elif file_type == 'lock':
             base_gcode = self._get_profile_gcode(self.profiles['lock'])
         elif file_type == 'hinge':
@@ -118,8 +164,15 @@ class GCodeGenerator(QObject):
         if not base_gcode:
             return ""
         
-        # Prepare substitution values
+        # Get $ variable values from frame configuration
+        dollar_values = self.frame_config.get('dollar_variables', {})
+        
+        # Prepare all substitution values (L variables, custom variables, $ variables)
         substitution_values = self._prepare_substitution_values(side, file_type)
+        
+        # Add $ variables to substitution values with $ prefix
+        for var_name, var_value in dollar_values.items():
+            substitution_values[f'${var_name}'] = str(var_value)
         
         # Perform variable substitution
         result = self._substitute_variables(base_gcode, substitution_values)
@@ -147,40 +200,7 @@ class GCodeGenerator(QObject):
         """Prepare all substitution values for a specific file"""
         values = {}
         
-        # Frame configuration values
-        if self.frame_config:
-            values.update({
-                'frame_height': str(self.frame_config.get('height', 0)),
-                'frame_width': str(self.frame_config.get('width', 1200)),
-                'machine_x_offset': str(self.frame_config.get('x_offset', 0)),
-                'machine_y_offset': str(self.frame_config.get('y_offset', 0)),
-                'machine_z_offset': str(self.frame_config.get('z_offset', 0)),
-                'lock_position': str(self.frame_config.get('lock_position', 0)),
-                'lock_y_offset': str(self.frame_config.get('lock_y_offset', 0)),
-                'hinge_y_offset': str(self.frame_config.get('hinge_y_offset', 0)),
-                'orientation': self.frame_config.get('orientation', 'right')
-            })
-            
-            # PM positions
-            pm_positions = self.frame_config.get('pm_positions', [])
-            for i, pos in enumerate(pm_positions):
-                values[f'pm{i+1}_position'] = str(pos)
-            
-            # Hinge positions
-            hinge_positions = self.frame_config.get('hinge_positions', [])
-            for i, pos in enumerate(hinge_positions):
-                values[f'hinge{i+1}_position'] = str(pos)
-        
-        # Side-specific adjustments
-        if side == 'left':
-            # Apply left-side specific transformations
-            values['side_multiplier'] = '-1'  # For X coordinates
-            values['side_offset'] = '0'
-        else:  # right
-            values['side_multiplier'] = '1'
-            values['side_offset'] = '0'
-        
-        # Profile-specific variables
+        # Profile-specific variables (L-variables and custom variables)
         profile_key = 'lock' if file_type == 'lock' else 'hinge' if file_type == 'hinge' else None
         if profile_key and self.profiles[profile_key]:
             profile = self.profiles[profile_key]
@@ -198,11 +218,11 @@ class GCodeGenerator(QObject):
         return values
     
     def _substitute_variables(self, gcode, values):
-        """Perform variable substitution in G-code"""
+        """Perform variable substitution in G-code (handles both {var} and {$var} patterns)"""
         result = gcode
         
-        # Find all variables in format {variable} or {variable:default}
-        pattern = r'\{([^}:]+)(?::([^}]*))?\}'
+        # Find all variables in format {variable} or {variable:default} including $ variables
+        pattern = r'\{(\$?[^}:]+)(?::([^}]*))?\}'
         
         def replace_var(match):
             var_name = match.group(1)

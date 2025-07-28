@@ -6,12 +6,13 @@ from gcode_ide import GCodeEditor
 
 
 class ProfileGCodeDialog(QDialog):
-    """G-code editor dialog for profiles with $ variables"""
+    """Enhanced G-code editor dialog for profiles with $ variables support"""
     
-    def __init__(self, profile_name, gcode_content="", parent=None):
+    def __init__(self, profile_name, gcode_content="", parent=None, dollar_variables_info=None):
         super().__init__(parent)
         self.profile_name = profile_name
         self.original_gcode = gcode_content
+        self.dollar_variables_info = dollar_variables_info or {}
         
         self.setWindowTitle(f"Edit G-Code: {profile_name}")
         self.setModal(True)
@@ -30,10 +31,19 @@ class ProfileGCodeDialog(QDialog):
         """Setup UI components"""
         layout = QVBoxLayout(self)
         
-        # Header with simple title
+        # Header with title and instructions
         title = QLabel(f"G-Code Editor - {self.profile_name}")
         title.setFont(QFont("Segoe UI", 14, QFont.Bold))
         layout.addWidget(title)
+        
+        # Instructions for $ variables
+        instructions = QLabel(
+            "Use $ variables for frame data: {$frame_height}, {$lock_position}, {$hinge1_position}, etc.\n"
+            "Click the ? button in the editor to see all available $ variables."
+        )
+        instructions.setStyleSheet("QLabel { color: #bdbdc0; font-size: 11px; }")
+        instructions.setWordWrap(True)
+        layout.addWidget(instructions)
         
         # Toolbar
         toolbar = QHBoxLayout()
@@ -50,12 +60,15 @@ class ProfileGCodeDialog(QDialog):
         save_btn.clicked.connect(self.save_gcode_to_file)
         toolbar.addWidget(save_btn)
         
-        # G-code editor
+        # G-code editor with $ variable support
         self.gcode_editor = GCodeEditor(self)
+        self.gcode_editor.set_dollar_variables_info(self.dollar_variables_info)
+        
         if not self.original_gcode:
             self.gcode_editor.setPlaceholderText(
                 "Enter G-code with $ variables:\n"
-                "{$frame_height}, {$lock_position}, {$hinge1_position}, etc."
+                "{$frame_height}, {$lock_position}, {$hinge1_position}, etc.\n\n"
+                "Click the ? button to see all available $ variables."
             )
         layout.addWidget(self.gcode_editor, 1)
         
@@ -111,6 +124,12 @@ class ProfileGCodeDialog(QDialog):
                 color: #1d1f28;
             }
         """)
+    
+    def set_dollar_variables_info(self, dollar_variables_info):
+        """Update available $ variables information"""
+        self.dollar_variables_info = dollar_variables_info
+        if hasattr(self, 'gcode_editor'):
+            self.gcode_editor.set_dollar_variables_info(dollar_variables_info)
     
     def load_gcode(self):
         """Load G-code content into editor"""

@@ -1,15 +1,162 @@
-from PySide6.QtWidgets import QPlainTextEdit, QWidget, QTextEdit, QToolTip
+from PySide6.QtWidgets import (QPlainTextEdit, QWidget, QTextEdit, QToolTip, QVBoxLayout, 
+                             QHBoxLayout, QPushButton, QDialog, QScrollArea, QLabel,
+                             QDialogButtonBox)
 from PySide6.QtGui import QColor, QFont, QSyntaxHighlighter, QTextCursor, QPainter, QPalette, QTextCharFormat, QTextFormat
 from PySide6.QtCore import QRegularExpression, QSize, Qt, QRect, Signal, QTimer
 import re
 
 
+class DollarVariablesDialog(QDialog):
+    """Dialog showing available $ variables with descriptions"""
+    
+    variable_selected = Signal(str)  # Emits variable name when selected
+    
+    def __init__(self, variables_info, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Available $ Variables")
+        self.setModal(True)
+        self.resize(600, 500)
+        
+        # Apply styling
+        self.setStyleSheet("""
+            DollarVariablesDialog {
+                background-color: #282a36;
+                color: #ffffff;
+            }
+            DollarVariablesDialog QLabel {
+                color: #ffffff;
+                background-color: transparent;
+            }
+            DollarVariablesDialog QPushButton {
+                background-color: #1d1f28;
+                color: #BB86FC;
+                border: 2px solid #BB86FC;
+                border-radius: 4px;
+                padding: 6px 12px;
+                min-width: 80px;
+            }
+            DollarVariablesDialog QPushButton:hover {
+                background-color: #000000;
+                color: #9965DA;
+                border: 2px solid #9965DA;
+            }
+            DollarVariablesDialog QPushButton:pressed {
+                background-color: #BB86FC;
+                color: #1d1f28;
+            }
+            QScrollArea {
+                background-color: #1d1f28;
+                border: 1px solid #6f779a;
+                border-radius: 4px;
+            }
+        """)
+        
+        self.setup_ui(variables_info)
+    
+    def setup_ui(self, variables_info):
+        """Setup UI components"""
+        layout = QVBoxLayout(self)
+        
+        # Title
+        title = QLabel("Available $ Variables")
+        title.setFont(QFont("Arial", 14, QFont.Bold))
+        layout.addWidget(title)
+        
+        # Instructions
+        instructions = QLabel("Click on a variable to insert it into your G-code:")
+        layout.addWidget(instructions)
+        
+        # Scroll area for variables
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        layout.addWidget(scroll, 1)
+        
+        # Container for variables
+        container = QWidget()
+        container.setStyleSheet("QWidget { background-color: #1d1f28; }")
+        container_layout = QVBoxLayout(container)
+        scroll.setWidget(container)
+        
+        # Group variables by category
+        categories = {
+            "Frame": ["frame_height", "frame_width"],
+            "Machine Offsets": ["machine_x_offset", "machine_y_offset", "machine_z_offset"],
+            "PM Positions": ["pm1_position", "pm2_position", "pm3_position", "pm4_position"],
+            "Lock": ["lock_position", "lock_y_offset", "lock_active", "lock_order"],
+            "Hinges": [f"hinge{i}_{prop}" for i in range(1, 5) for prop in ["position", "active", "order"]] + ["hinge_y_offset"],
+            "General": ["orientation"]
+        }
+        
+        for category, var_names in categories.items():
+            # Category header
+            category_label = QLabel(f"--- {category} ---")
+            category_label.setFont(QFont("Arial", 12, QFont.Bold))
+            category_label.setStyleSheet("QLabel { color: #BB86FC; padding: 10px 0 5px 0; }")
+            container_layout.addWidget(category_label)
+            
+            # Variables in this category
+            for var_name in var_names:
+                if var_name in variables_info:
+                    var_widget = self.create_variable_widget(var_name, variables_info[var_name])
+                    container_layout.addWidget(var_widget)
+        
+        container_layout.addStretch()
+        
+        # Dialog buttons
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(self.accept)
+        layout.addWidget(buttons)
+    
+    def create_variable_widget(self, var_name, description):
+        """Create a clickable variable widget"""
+        widget = QWidget()
+        widget.setCursor(Qt.PointingHandCursor)
+        widget.setStyleSheet("""
+            QWidget {
+                background-color: #44475c;
+                border: 1px solid #6f779a;
+                border-radius: 4px;
+                padding: 5px;
+                margin: 2px;
+            }
+            QWidget:hover {
+                background-color: #6f779a;
+                border: 1px solid #BB86FC;
+            }
+        """)
+        
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(8, 5, 8, 5)
+        
+        # Variable name
+        name_label = QLabel(f"${{{var_name}}}")
+        name_label.setFont(QFont("Consolas", 11, QFont.Bold))
+        name_label.setStyleSheet("QLabel { color: #23c87b; }")
+        layout.addWidget(name_label)
+        
+        # Description
+        desc_label = QLabel(description)
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("QLabel { color: #bdbdc0; font-size: 10px; }")
+        layout.addWidget(desc_label)
+        
+        # Make clickable
+        def on_click():
+            self.variable_selected.emit(f"${{{var_name}}}")
+            self.accept()
+        
+        widget.mousePressEvent = lambda event: on_click() if event.button() == Qt.LeftButton else None
+        
+        return widget
+
+
 # MARK: - Syntax Highlighter
 class GCodeSyntaxHighlighter(QSyntaxHighlighter):
-    """Simple and robust G-code syntax highlighter"""
+    """Enhanced G-code syntax highlighter with $ variable validation"""
     
-    def __init__(self, document):
+    def __init__(self, document, dollar_variables_info=None):
         super().__init__(document)
+        self.dollar_variables_info = dollar_variables_info or {}
         
         font = QFont('Consolas', 18)
         font.setFixedPitch(True)
@@ -18,6 +165,16 @@ class GCodeSyntaxHighlighter(QSyntaxHighlighter):
         self.variable_format = QTextCharFormat()
         self.variable_format.setForeground(QColor('#ff8c00'))  # Orange
         self.variable_format.setFont(font)
+        
+        # $ variable formats
+        self.valid_dollar_format = QTextCharFormat()
+        self.valid_dollar_format.setForeground(QColor('#23c87b'))  # Green for valid $ variables
+        self.valid_dollar_format.setFont(font)
+        
+        self.invalid_dollar_format = QTextCharFormat()
+        self.invalid_dollar_format.setForeground(QColor('#ff4a7c'))  # Red for invalid $ variables
+        self.invalid_dollar_format.setBackground(QColor('#2d1f1f'))  # Dark red background
+        self.invalid_dollar_format.setFont(font)
         
         self.g0_format = QTextCharFormat()
         self.g0_format.setForeground(QColor('#d15e43'))  # Red for rapid
@@ -70,9 +227,14 @@ class GCodeSyntaxHighlighter(QSyntaxHighlighter):
         self.comment_format = QTextCharFormat()
         self.comment_format.setForeground(QColor('#B0B8B4'))  # Light gray for comments
         self.comment_format.setFont(font)
+    
+    def update_dollar_variables(self, dollar_variables_info):
+        """Update available $ variables for validation"""
+        self.dollar_variables_info = dollar_variables_info
+        self.rehighlight()
 
     def highlightBlock(self, text):
-        """Apply syntax highlighting using simple character-by-character parsing"""
+        """Apply syntax highlighting using character-by-character parsing"""
         i = 0
         length = len(text)
         
@@ -87,15 +249,29 @@ class GCodeSyntaxHighlighter(QSyntaxHighlighter):
                 self.setFormat(i, length - i, self.comment_format)
                 break
             
-            # Handle variables {anything}
+            # Handle variables {anything} including $ variables
             if text[i] == '{':
                 start = i
                 i += 1
+                var_content = ""
                 while i < length and text[i] != '}':
+                    var_content += text[i]
                     i += 1
                 if i < length:  # Found closing }
                     i += 1
-                    self.setFormat(start, i - start, self.variable_format)
+                    # Determine variable type and format
+                    var_name = var_content.split(':')[0]  # Remove default value part
+                    
+                    if var_name.startswith('$'):
+                        # $ variable - check if valid
+                        dollar_var = var_name[1:]  # Remove $ prefix
+                        if dollar_var in self.dollar_variables_info:
+                            self.setFormat(start, i - start, self.valid_dollar_format)
+                        else:
+                            self.setFormat(start, i - start, self.invalid_dollar_format)
+                    else:
+                        # Regular variable
+                        self.setFormat(start, i - start, self.variable_format)
                 continue
             
             # Handle letters followed by values
@@ -227,7 +403,7 @@ class LineNumberArea(QWidget):
 
 # MARK: - Main Editor
 class GCodeEditor(QPlainTextEdit):
-    """G-code editor with smart highlighting and selection features"""
+    """G-code editor with smart highlighting, $ variable support, and help dialog"""
     
     variables_changed = Signal(list)
     
@@ -241,6 +417,7 @@ class GCodeEditor(QPlainTextEdit):
         self.selection_timer = QTimer()
         self.selection_timer.setSingleShot(True)
         self.selection_timer.timeout.connect(self.highlightSelections)
+        self.dollar_variables_info = {}
 
         # Setup appearance
         palette = self.palette()
@@ -252,7 +429,7 @@ class GCodeEditor(QPlainTextEdit):
         self.setLineWrapMode(QPlainTextEdit.NoWrap)
 
         # Setup highlighter
-        self.highlighter = GCodeSyntaxHighlighter(self.document())
+        self.highlighter = GCodeSyntaxHighlighter(self.document(), self.dollar_variables_info)
 
         # Connect signals
         self.blockCountChanged.connect(self.updateLineNumberAreaWidth)
@@ -262,6 +439,66 @@ class GCodeEditor(QPlainTextEdit):
         self.selectionChanged.connect(self.onSelectionChanged)
         
         self.updateLineNumberAreaWidth(0)
+        
+        # Create help button
+        self.create_help_button()
+
+    def create_help_button(self):
+        """Create the ? button for showing $ variables"""
+        self.help_button = QPushButton("?", self)
+        self.help_button.setFixedSize(25, 25)
+        self.help_button.setStyleSheet("""
+            QPushButton {
+                background-color: #BB86FC;
+                color: #1d1f28;
+                border: none;
+                border-radius: 12px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #9965DA;
+            }
+            QPushButton:pressed {
+                background-color: #7c4dff;
+            }
+        """)
+        self.help_button.clicked.connect(self.show_dollar_variables_help)
+        self.help_button.setToolTip("Show available $ variables")
+        
+        # Position button in top-right corner
+        self.position_help_button()
+    
+    def position_help_button(self):
+        """Position the help button in the top-right corner"""
+        margin = 10
+        self.help_button.move(
+            self.viewport().width() - self.help_button.width() - margin,
+            margin
+        )
+    
+    def resizeEvent(self, event):
+        """Handle resize to reposition help button and line numbers"""
+        super().resizeEvent(event)
+        cr = self.contentsRect()
+        self.lineNumberArea.setGeometry(QRect(cr.left(), cr.top(), self.lineNumberAreaWidth(), cr.height()))
+        self.position_help_button()
+    
+    def set_dollar_variables_info(self, variables_info):
+        """Set available $ variables information"""
+        self.dollar_variables_info = variables_info
+        self.highlighter.update_dollar_variables(variables_info)
+    
+    def show_dollar_variables_help(self):
+        """Show dialog with available $ variables"""
+        dialog = DollarVariablesDialog(self.dollar_variables_info, self)
+        dialog.variable_selected.connect(self.insert_variable)
+        dialog.exec_()
+    
+    def insert_variable(self, variable_text):
+        """Insert a variable at current cursor position"""
+        cursor = self.textCursor()
+        cursor.insertText(variable_text)
 
     # MARK: - Line Numbers
     def lineNumberAreaWidth(self):
@@ -283,11 +520,6 @@ class GCodeEditor(QPlainTextEdit):
             self.lineNumberArea.update(0, rect.y(), self.lineNumberArea.width(), rect.height())
         if rect.contains(self.viewport().rect()):
             self.updateLineNumberAreaWidth(0)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        cr = self.contentsRect()
-        self.lineNumberArea.setGeometry(QRect(cr.left(), cr.top(), self.lineNumberAreaWidth(), cr.height()))
 
     def lineNumberAreaPaintEvent(self, event):
         """Paint line numbers"""

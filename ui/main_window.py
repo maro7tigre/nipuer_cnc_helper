@@ -3,6 +3,7 @@ from PySide6.QtCore import Qt
 from .profile_tab import ProfileTab
 from .frame_tab import FrameTab
 from .generate_tab import GenerateTab
+from gcode_generator import GCodeGenerator
 
 
 class MainWindow(QMainWindow):
@@ -10,6 +11,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("CNC Frame Wizard")
+        
+        # Create G-code generator
+        self.generator = GCodeGenerator()
         
         # Create central widget and layout
         central_widget = QWidget()
@@ -24,6 +28,9 @@ class MainWindow(QMainWindow):
         self.profile_tab = ProfileTab()
         self.frame_tab = FrameTab()
         self.generate_tab = GenerateTab()
+        
+        # Set generator for generate tab
+        self.generate_tab.set_generator(self.generator)
         
         # Add tabs
         self.tabs.addTab(self.profile_tab, "Profile Selection")
@@ -50,23 +57,51 @@ class MainWindow(QMainWindow):
         
     # MARK: - Event Handlers
     def on_profiles_selected(self, hinge_profile, lock_profile):
-        """Enable frame tab when profiles are selected"""
+        """Enable frame tab when profiles are selected and update generator"""
         if hinge_profile and lock_profile:
             self.tabs.setTabEnabled(1, True)
+            
+            # Get profile data from profile tab
+            hinge_data = self.profile_tab.hinge_grid.profiles.get(hinge_profile, {})
+            lock_data = self.profile_tab.lock_grid.profiles.get(lock_profile, {})
+            
             # Pass selected profiles to frame tab
             self.frame_tab.set_profiles(hinge_profile, lock_profile)
+            self.frame_tab.set_profile_data(hinge_data, lock_data)
+            
+            # Update generator with profile data
+            self.generator.update_profiles(hinge_data, lock_data)
+            
             # Update generate tab
-            self.generate_tab.set_profiles(hinge_profile, lock_profile)
+            self.generate_tab.set_profiles(hinge_data, lock_data)
     
     # MARK: - Configuration
     def on_frame_configured(self, frame_data):
-        """Enable generate tab when frame is configured"""
+        """Enable generate tab when frame is configured and update generator"""
         self.tabs.setTabEnabled(2, True)
+        
+        # Update generator with frame configuration
+        self.generator.update_frame_config(frame_data)
+        
         # Pass frame data to generate tab
         self.generate_tab.set_frame_data(frame_data)
+        
+        # Update all G-code editors with $ variable information
+        self.update_dollar_variables_in_editors()
+    
+    def update_dollar_variables_in_editors(self):
+        """Update all G-code editors with available $ variables"""
+        dollar_vars_info = self.generator.get_dollar_variables_info()
+        
+        # Update frame tab with $ variables info
+        self.frame_tab.set_dollar_variables_info(dollar_vars_info)
+        
+        # Update generate tab's file items
+        self.generate_tab.update_dollar_variables_in_items()
     
     # MARK: - File Operations
     def generate_files(self):
-        """Generate G-code files"""
-        # TODO: Implement actual file generation
-        print("Generating files...")
+        """Generate G-code files using the generator"""
+        # Force regeneration
+        self.generator.regenerate_all()
+        print("Files generated successfully!")
