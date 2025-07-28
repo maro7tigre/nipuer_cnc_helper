@@ -360,34 +360,34 @@ class LineNumberArea(QWidget):
     
     def __init__(self, editor):
         super().__init__(editor)
-        self.codeEditor = editor
+        self.editor = editor  # Reference to the GCodeEditor
         self.setMouseTracking(True)
         self.clickedLineNumber = None
 
     def sizeHint(self):
-        return QSize(self.codeEditor.lineNumberAreaWidth(), 0)
+        return QSize(self.editor.lineNumberAreaWidth(), 0)
 
     def paintEvent(self, event):
-        self.codeEditor.lineNumberAreaPaintEvent(event)
+        self.editor.lineNumberAreaPaintEvent(event)
         
     def mousePressEvent(self, event):
         """Handle error tooltip display"""
         if event.button() == Qt.LeftButton:
-            block = self.codeEditor.firstVisibleBlock()
+            block = self.editor.firstVisibleBlock()
             blockNumber = block.blockNumber()
-            top = self.codeEditor.blockBoundingGeometry(block).translated(self.codeEditor.contentOffset()).top()
-            bottom = top + self.codeEditor.blockBoundingRect(block).height()
+            top = self.editor.blockBoundingGeometry(block).translated(self.editor.contentOffset()).top()
+            bottom = top + self.editor.blockBoundingRect(block).height()
 
             while block.isValid() and top <= event.pos().y():
                 if block.isVisible() and bottom >= event.pos().y():
                     lineNumber = blockNumber + 1
-                    if lineNumber in self.codeEditor.errors:
+                    if lineNumber in self.editor.errors:
                         if self.clickedLineNumber == lineNumber:
                             self.clickedLineNumber = None
                             QToolTip.hideText()
                         else:
                             self.clickedLineNumber = lineNumber
-                            errors = self.codeEditor.errors[lineNumber]
+                            errors = self.editor.errors[lineNumber]
                             tooltip_text = "\n".join([f"- {trigger} : {message}" for message, trigger, _ in errors])
                             QToolTip.showText(event.globalPos(), tooltip_text, self)
                     else:
@@ -397,7 +397,7 @@ class LineNumberArea(QWidget):
 
                 block = block.next()
                 top = bottom
-                bottom = top + self.codeEditor.blockBoundingRect(block).height()
+                bottom = top + self.editor.blockBoundingRect(block).height()
                 blockNumber += 1
 
 
@@ -544,7 +544,7 @@ class GCodeEditor(QPlainTextEdit):
                 
             block = block.next()
             top = bottom
-            bottom = top + self.codeEditor.blockBoundingRect(block).height()
+            bottom = top + self.blockBoundingRect(block).height()
             blockNumber += 1
 
     # MARK: - Highlighting
