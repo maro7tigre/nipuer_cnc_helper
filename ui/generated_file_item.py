@@ -7,11 +7,12 @@ from PySide6.QtGui import QFont, QPixmap, QPainter, QColor
 class GCodeEditDialog(QDialog):
     """Dialog for editing G-code with the full editor"""
     
-    def __init__(self, title, content, parent=None):
+    def __init__(self, title, content, dollar_variables_info=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"Edit {title}")
         self.setModal(True)
         self.resize(800, 600)
+        self.dollar_variables_info = dollar_variables_info or {}
         
         # Enable maximize/minimize buttons
         self.setWindowFlags(Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | 
@@ -61,6 +62,7 @@ class GCodeEditDialog(QDialog):
         
         # G-code editor
         self.editor = GCodeEditor(self)
+        self.editor.set_dollar_variables_info(self.dollar_variables_info)
         self.editor.setPlainText(content)
         layout.addWidget(self.editor)
         
@@ -85,24 +87,27 @@ class GCodeEditDialog(QDialog):
 
 
 class GeneratedFileItem(QFrame):
-    """Individual file item with visual modification tracking"""
+    """Individual file item with dual content tracking and visual modification indication"""
     
     content_changed = Signal(str)  # Emits new content when edited
     
-    def __init__(self, name, file_type, side):
+    def __init__(self, name, file_type, side, dollar_variables_info=None):
         super().__init__()
         self.name = name
         self.file_type = file_type  # 'frame', 'lock', 'hinge'
         self.side = side  # 'left', 'right'
-        self.content = ""
-        self.original_content = ""
-        self.is_modified = False
+        self.dollar_variables_info = dollar_variables_info or {}
+        
+        # Two sets of content
+        self.auto_generated_content = ""  # Auto-generated from parameters
+        self.displayed_content = ""       # What's shown and can be edited
+        self._manually_modified = False   # Track if user has manually modified
         
         self.setFixedSize(140, 100)
         self.setCursor(Qt.PointingHandCursor)
         
         self.setup_ui()
-        self.update_style()
+        self.update_border_color()
     
     def setup_ui(self):
         """Setup the widget UI"""
@@ -146,21 +151,42 @@ class GeneratedFileItem(QFrame):
         painter.end()
         self.icon_label.setPixmap(pixmap)
     
-    def update_content(self, content, original_content):
-        """Update file content and check modification status"""
-        self.content = content
-        self.original_content = original_content
-        self.is_modified = (content != original_content)
-        self.update_style()
+    def set_dollar_variables_info(self, dollar_variables_info):
+        """Update $ variables information"""
+        self.dollar_variables_info = dollar_variables_info
     
-    def update_style(self):
-        """Update visual style based on modification status"""
-        if self.is_modified:
-            # Red border for modified files
+    def update_auto_generated_content(self, content):
+        """Update the auto-generated content (from parameter changes)"""
+        self.auto_generated_content = content
+    
+    def update_displayed_content(self, content):
+        """Update the displayed content (what user sees/edits)"""
+        self.displayed_content = content
+    
+    def get_displayed_content(self):
+        """Get the current displayed content"""
+        return self.displayed_content
+    
+    def copy_auto_to_displayed(self):
+        """Copy auto-generated content to displayed content"""
+        self.displayed_content = self.auto_generated_content
+    
+    def is_manually_modified(self):
+        """Check if content has been manually modified"""
+        return self._manually_modified
+    
+    def set_manually_modified(self, modified):
+        """Set manual modification flag"""
+        self._manually_modified = modified
+    
+    def update_border_color(self):
+        """Update border color based on content state"""
+        if self.displayed_content != self.auto_generated_content:
+            # Red border - displayed content differs from auto-generated
             border_color = "#ff4444"
             bg_color = "#2d1f1f"
         else:
-            # Green border for unmodified files
+            # Green border - displayed content matches auto-generated
             border_color = "#23c87b"
             bg_color = "#1f2d20"
         
@@ -183,22 +209,27 @@ class GeneratedFileItem(QFrame):
     
     def open_editor(self):
         """Open G-code editor dialog"""
-        dialog = GCodeEditDialog(f"{self.side.title()} {self.name}", self.content, self)
+        dialog = GCodeEditDialog(
+            f"{self.side.title()} {self.name}", 
+            self.displayed_content, 
+            self.dollar_variables_info,
+            self
+        )
         
         if dialog.exec_() == QDialog.Accepted:
             new_content = dialog.get_content()
-            self.content = new_content
-            self.is_modified = (new_content != self.original_content)
-            self.update_style()
+            self.displayed_content = new_content
+            self._manually_modified = True
+            self.update_border_color()
             self.content_changed.emit(new_content)
     
-    def reset_to_original(self):
-        """Reset content to original (auto-generated) version"""
-        self.content = self.original_content
-        self.is_modified = False
-        self.update_style()
-        self.content_changed.emit(self.content)
+    def reset_to_auto_generated(self):
+        """Reset displayed content to auto-generated version"""
+        self.displayed_content = self.auto_generated_content
+        self._manually_modified = False
+        self.update_border_color()
+        self.content_changed.emit(self.displayed_content)
     
     def has_content(self):
-        """Check if file has any content"""
-        return bool(self.content.strip())
+        """Check if file has any displayed content"""
+        return bool(self.displayed_content.strip())

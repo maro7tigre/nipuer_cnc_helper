@@ -7,7 +7,7 @@ from .generated_file_item import GeneratedFileItem
 import os
 
 class GenerateTab(QWidget):
-    """Complete file generation tab with real-time updates"""
+    """Complete file generation tab with real-time updates and proper border management"""
     back_clicked = Signal()
     generate_clicked = Signal()
     
@@ -15,6 +15,7 @@ class GenerateTab(QWidget):
         super().__init__()
         self.generator = None  # Will be set from main window
         self.output_dir = os.path.expanduser("~/CNC/Output")
+        self.dollar_variables_info = {}  # Store $ variables info
         
         # File items organized by side and type
         self.file_items = {
@@ -129,7 +130,7 @@ class GenerateTab(QWidget):
         # Action buttons
         self.generate_button = QPushButton("Generate Files")
         self.generate_button.setObjectName("generate_button")
-        self.generate_button.clicked.connect(self.generate_clicked)
+        self.generate_button.clicked.connect(self.on_generate_clicked)
         toolbar_layout.addWidget(self.generate_button)
         
         self.export_button = QPushButton("Export Files")
@@ -197,7 +198,7 @@ class GenerateTab(QWidget):
         ]
         
         for i, (file_type, display_name) in enumerate(file_types):
-            file_item = GeneratedFileItem(display_name, file_type, side)
+            file_item = GeneratedFileItem(display_name, file_type, side, self.dollar_variables_info)
             file_item.content_changed.connect(
                 lambda content, s=side, ft=file_type: self.on_file_content_changed(s, ft, content)
             )
@@ -220,22 +221,64 @@ class GenerateTab(QWidget):
         if generator:
             generator.files_updated.connect(self.on_files_updated)
     
+    def set_dollar_variables_info(self, dollar_variables_info):
+        """Update $ variables information for all file items"""
+        self.dollar_variables_info = dollar_variables_info
+        # Update all file items
+        for side in ['left', 'right']:
+            for file_type in ['frame', 'lock', 'hinge']:
+                if side in self.file_items and file_type in self.file_items[side]:
+                    self.file_items[side][file_type].set_dollar_variables_info(dollar_variables_info)
+    
+    def update_dollar_variables_in_items(self, dollar_variables_info):
+        """Update $ variables in all file items (called from main window)"""
+        self.set_dollar_variables_info(dollar_variables_info)
+    
     def on_files_updated(self, files_data):
-        """Handle updated files from generator"""
+        """Handle updated files from generator - this updates the auto-generated content"""
         for side in ['left', 'right']:
             for file_type in ['frame', 'lock', 'hinge']:
                 if side in files_data and file_type in files_data[side]:
                     file_data = files_data[side][file_type]
-                    content = file_data.get('content', '')
-                    original = file_data.get('original', '')
+                    auto_generated_content = file_data.get('original', '')  # This is the auto-generated
+                    current_displayed_content = file_data.get('content', '')  # This is what's shown/edited
                     
                     file_item = self.file_items[side][file_type]
-                    file_item.update_content(content, original)
+                    file_item.update_auto_generated_content(auto_generated_content)
+                    
+                    # Only update displayed content if it hasn't been manually modified
+                    if not file_item.is_manually_modified():
+                        file_item.update_displayed_content(current_displayed_content)
+                    
+                    # Update border color based on whether displayed matches auto-generated
+                    file_item.update_border_color()
     
     def on_file_content_changed(self, side, file_type, new_content):
         """Handle manual file content changes"""
         if self.generator:
             self.generator.update_file_content(side, file_type, new_content)
+            
+        # Mark as manually modified and update border
+        file_item = self.file_items[side][file_type]
+        file_item.set_manually_modified(True)
+        file_item.update_border_color()
+    
+    def on_generate_clicked(self):
+        """Handle generate button click - copy auto-generated to displayed"""
+        # Emit signal to trigger main window generation
+        self.generate_clicked.emit()
+        
+        # Copy auto-generated content to displayed content for all items
+        for side in ['left', 'right']:
+            for file_type in ['frame', 'lock', 'hinge']:
+                file_item = self.file_items[side][file_type]
+                file_item.copy_auto_to_displayed()
+                file_item.set_manually_modified(False)
+                file_item.update_border_color()
+                
+                # Update generator's content to match
+                if self.generator:
+                    self.generator.update_file_content(side, file_type, file_item.get_displayed_content())
     
     def export_files(self):
         """Export all files to the output directory"""
@@ -306,14 +349,3 @@ class GenerateTab(QWidget):
         """Set frame configuration data (called from main window)"""
         # This will be used when connecting to the generator
         pass
-    
-    def update_file_borders(self):
-        """Update all file item borders based on modification status"""
-        for side in ['left', 'right']:
-            for file_type in ['frame', 'lock', 'hinge']:
-                file_item = self.file_items[side][file_type]
-                if self.generator:
-                    is_modified = self.generator.is_file_modified(side, file_type)
-                    if is_modified != file_item.is_modified:
-                        file_item.is_modified = is_modified
-                        file_item.update_style()

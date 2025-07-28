@@ -187,6 +187,7 @@ class FrameTab(QWidget):
         self.profiles = {}
         self.profile_data = {}  # Store full profile data
         self.execution_order = []
+        self.dollar_variables_info = {}  # Store $ variables info
         
         self.setup_ui()
         self.connect_signals()
@@ -211,6 +212,10 @@ class FrameTab(QWidget):
         # Update auto positions after everything is setup
         self.update_all_auto_positions()
         self.on_config_changed()
+    
+    def set_dollar_variables_info(self, dollar_variables_info):
+        """Set available $ variables information for G-code editors"""
+        self.dollar_variables_info = dollar_variables_info
     
     def apply_styling(self):
         """Apply dark theme styling"""
@@ -1091,7 +1096,7 @@ class FrameTab(QWidget):
             current_gcode = self.profile_data['hinge'].get('gcode_right', '')
         
         from PySide6.QtWidgets import QDialog
-        dialog = ProfileGCodeDialog("Right Door G-Code", current_gcode, self)
+        dialog = ProfileGCodeDialog("Right Door G-Code", current_gcode, self, self.dollar_variables_info)
         if dialog.exec_() == QDialog.Accepted:
             # Ensure hinge profile data exists
             if 'hinge' not in self.profile_data:
@@ -1108,7 +1113,7 @@ class FrameTab(QWidget):
             current_gcode = self.profile_data['hinge'].get('gcode_left', '')
         
         from PySide6.QtWidgets import QDialog
-        dialog = ProfileGCodeDialog("Left Door G-Code", current_gcode, self)
+        dialog = ProfileGCodeDialog("Left Door G-Code", current_gcode, self, self.dollar_variables_info)
         if dialog.exec_() == QDialog.Accepted:
             # Ensure hinge profile data exists
             if 'hinge' not in self.profile_data:
@@ -1149,6 +1154,7 @@ class FrameTab(QWidget):
         # Generate $ variables for G-code replacement
         dollar_vars = {
             'frame_height': float(self.height_input.text() or 0),
+            'frame_width': 1200,  # Fixed width
             'machine_x_offset': float(self.x_offset_input.text() or 0),
             'machine_y_offset': float(self.y_offset_input.text() or 0),
             'machine_z_offset': float(self.z_offset_input.text() or 0),
@@ -1159,6 +1165,8 @@ class FrameTab(QWidget):
             'lock_position': float(self.lock_position_input.text() or 0),
             'lock_y_offset': float(self.lock_y_offset_input.text() or 0),
             'lock_active': 1 if self.lock_active_check.isChecked() else 0,
+            'hinge_y_offset': float(self.hinge_z_offset_input.text() or 0),
+            'orientation': 'left' if self.left_radio.isChecked() else 'right',
         }
         
         # Add hinge $ variables

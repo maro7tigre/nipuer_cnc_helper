@@ -43,6 +43,7 @@ class MainWindow(QMainWindow):
         
         # Connect signals
         self.profile_tab.profiles_selected.connect(self.on_profiles_selected)
+        self.profile_tab.profiles_modified.connect(self.on_profiles_modified)
         self.profile_tab.next_clicked.connect(lambda: self.tabs.setCurrentIndex(1))
         
         self.frame_tab.back_clicked.connect(lambda: self.tabs.setCurrentIndex(0))
@@ -74,6 +75,19 @@ class MainWindow(QMainWindow):
             
             # Update generate tab
             self.generate_tab.set_profiles(hinge_data, lock_data)
+            
+            # Update $ variables info immediately after profiles are selected
+            self.update_dollar_variables_in_editors()
+    
+    def on_profiles_modified(self):
+        """Handle when profiles are modified (selection or data changes)"""
+        # Update generator with current profile data if both profiles are selected
+        if self.profile_tab.selected_hinge and self.profile_tab.selected_lock:
+            hinge_data = self.profile_tab.hinge_grid.profiles.get(self.profile_tab.selected_hinge, {})
+            lock_data = self.profile_tab.lock_grid.profiles.get(self.profile_tab.selected_lock, {})
+            
+            # Update generator with new profile data
+            self.generator.update_profiles(hinge_data, lock_data)
     
     # MARK: - Configuration
     def on_frame_configured(self, frame_data):
@@ -96,8 +110,9 @@ class MainWindow(QMainWindow):
         # Update frame tab with $ variables info
         self.frame_tab.set_dollar_variables_info(dollar_vars_info)
         
-        # Update generate tab's file items
-        self.generate_tab.update_dollar_variables_in_items()
+        # Update generate tab's file items (if it has this method)
+        if hasattr(self.generate_tab, 'update_dollar_variables_in_items'):
+            self.generate_tab.update_dollar_variables_in_items(dollar_vars_info)
     
     # MARK: - File Operations
     def generate_files(self):

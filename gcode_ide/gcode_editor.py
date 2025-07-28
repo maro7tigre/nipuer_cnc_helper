@@ -128,8 +128,8 @@ class DollarVariablesDialog(QDialog):
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(8, 5, 8, 5)
         
-        # Variable name
-        name_label = QLabel(f"${{{var_name}}}")
+        # Variable name - FIXED: Show {$var_name} instead of ${var_name}
+        name_label = QLabel(f"{{${var_name}}}")
         name_label.setFont(QFont("Consolas", 11, QFont.Bold))
         name_label.setStyleSheet("QLabel { color: #23c87b; }")
         layout.addWidget(name_label)
@@ -140,9 +140,9 @@ class DollarVariablesDialog(QDialog):
         desc_label.setStyleSheet("QLabel { color: #bdbdc0; font-size: 10px; }")
         layout.addWidget(desc_label)
         
-        # Make clickable
+        # Make clickable - FIXED: Emit {$var_name} instead of ${var_name}
         def on_click():
-            self.variable_selected.emit(f"${{{var_name}}}")
+            self.variable_selected.emit(f"{{${var_name}}}")
             self.accept()
         
         widget.mousePressEvent = lambda event: on_click() if event.button() == Qt.LeftButton else None
@@ -544,7 +544,7 @@ class GCodeEditor(QPlainTextEdit):
                 
             block = block.next()
             top = bottom
-            bottom = top + self.blockBoundingRect(block).height()
+            bottom = top + self.codeEditor.blockBoundingRect(block).height()
             blockNumber += 1
 
     # MARK: - Highlighting

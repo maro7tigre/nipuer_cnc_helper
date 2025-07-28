@@ -480,6 +480,7 @@ class ProfileTab(QWidget):
     """Main profile selection tab with split view and Python styling"""
     profiles_selected = Signal(str, str)  # hinge_profile, lock_profile
     next_clicked = Signal()
+    profiles_modified = Signal()  # New signal for when profiles are modified
     
     def __init__(self):
         super().__init__()
@@ -619,8 +620,8 @@ class ProfileTab(QWidget):
         """Connect widget signals"""
         self.hinge_grid.selection_changed.connect(self.on_hinge_selected)
         self.lock_grid.selection_changed.connect(self.on_lock_selected)
-        self.hinge_grid.data_modified.connect(self.save_current_profiles)
-        self.lock_grid.data_modified.connect(self.save_current_profiles)
+        self.hinge_grid.data_modified.connect(self.on_profiles_modified)
+        self.lock_grid.data_modified.connect(self.on_profiles_modified)
         self.next_button.clicked.connect(self.on_next_clicked)
     
     def on_hinge_selected(self, name):
@@ -628,12 +629,22 @@ class ProfileTab(QWidget):
         self.selected_hinge = name if name else None
         self.update_selection_display()
         self.save_current_profiles()
+        # Emit profiles modified signal to trigger border updates
+        self.profiles_modified.emit()
     
     def on_lock_selected(self, name):
         """Handle lock profile selection"""
         self.selected_lock = name if name else None
         self.update_selection_display()
         self.save_current_profiles()
+        # Emit profiles modified signal to trigger border updates
+        self.profiles_modified.emit()
+    
+    def on_profiles_modified(self):
+        """Handle when profile data is modified"""
+        self.save_current_profiles()
+        # Emit signal to notify main window that profiles changed
+        self.profiles_modified.emit()
     
     def update_selection_display(self):
         """Update selection display and controls"""
@@ -766,6 +777,10 @@ class ProfileTab(QWidget):
                 self.save_current_profiles()  # Update current.json
                 
                 QMessageBox.information(self, "Success", "Profile set loaded successfully!")
+                
+                # Emit profiles modified signal to trigger border updates
+                self.profiles_modified.emit()
+                
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load profile set: {str(e)}")
     
