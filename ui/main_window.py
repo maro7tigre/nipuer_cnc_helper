@@ -49,6 +49,7 @@ class MainWindow(QMainWindow):
         self.frame_tab.back_clicked.connect(lambda: self.tabs.setCurrentIndex(0))
         self.frame_tab.next_clicked.connect(lambda: self.tabs.setCurrentIndex(2))
         self.frame_tab.configuration_changed.connect(self.on_frame_configured)
+        self.frame_tab.frame_gcode_changed.connect(self.on_frame_gcode_changed)
         
         self.generate_tab.back_clicked.connect(lambda: self.tabs.setCurrentIndex(1))
         self.generate_tab.generate_clicked.connect(self.generate_files)
@@ -76,8 +77,21 @@ class MainWindow(QMainWindow):
             # Update generate tab
             self.generate_tab.set_profiles(hinge_data, lock_data)
             
+            # Load frame G-code data from profile tab
+            frame_gcode_data = self.profile_tab.get_frame_gcode_data()
+            self.frame_tab.set_frame_gcode_data(frame_gcode_data)
+            
             # Update $ variables info immediately after profiles are selected
             self.update_dollar_variables_in_editors()
+    
+    def on_frame_gcode_changed(self, frame_gcode_data):
+        """Handle frame G-code changes and save to current.json"""
+        # Save frame G-code to profile tab (which handles current.json)
+        self.profile_tab.save_frame_gcode_data(frame_gcode_data)
+        
+        # Update generator with new frame data
+        frame_data = self.frame_tab.get_configuration()
+        self.generator.update_frame_config(frame_data)
     
     def on_profiles_modified(self):
         """Handle when profiles are modified (selection or data changes)"""

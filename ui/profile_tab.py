@@ -489,6 +489,7 @@ class ProfileTab(QWidget):
         self.profiles_dir = "profiles"
         self.current_file = os.path.join(self.profiles_dir, "current.json")
         self.saved_dir = os.path.join(self.profiles_dir, "saved")
+        self._frame_gcode_data = {'gcode_right': '', 'gcode_left': ''}  # Initialize frame G-code data
         
         # Ensure directories exist
         os.makedirs(self.saved_dir, exist_ok=True)
@@ -704,7 +705,11 @@ class ProfileTab(QWidget):
                 "profiles": {}
             },
             "selected_hinge": None,
-            "selected_lock": None
+            "selected_lock": None,
+            "frame_gcode": {
+                "gcode_right": "",
+                "gcode_left": ""
+            }
         }
         
         with open(self.current_file, 'w') as f:
@@ -723,7 +728,7 @@ class ProfileTab(QWidget):
             print(f"Error saving current profiles: {str(e)}")
     
     def get_current_data(self):
-        """Get current data including types"""
+        """Get current data including types and frame G-code"""
         data = {
             "hinges": {
                 "types": self.hinge_grid.types,
@@ -734,7 +739,8 @@ class ProfileTab(QWidget):
                 "profiles": self.lock_grid.get_profiles_data()
             },
             "selected_hinge": self.selected_hinge,
-            "selected_lock": self.selected_lock
+            "selected_lock": self.selected_lock,
+            "frame_gcode": self._frame_gcode_data
         }
         
         return data
@@ -797,8 +803,20 @@ class ProfileTab(QWidget):
             self.lock_grid.set_types_data(lock_types)
             self.lock_grid.load_profiles_data(data["locks"].get("profiles", {}))
         
+        # Load frame G-code data
+        self._frame_gcode_data = data.get("frame_gcode", {'gcode_right': '', 'gcode_left': ''})
+        
         # Restore selection
         if data.get("selected_hinge"):
             self.hinge_grid.on_item_clicked(data["selected_hinge"])
         if data.get("selected_lock"):
             self.lock_grid.on_item_clicked(data["selected_lock"])
+    
+    def save_frame_gcode_data(self, frame_gcode_data):
+        """Save frame G-code data"""
+        self._frame_gcode_data = frame_gcode_data
+        self.save_current_profiles()
+    
+    def get_frame_gcode_data(self):
+        """Get frame G-code data"""
+        return self._frame_gcode_data

@@ -150,12 +150,15 @@ class GCodeGenerator(QObject):
         base_gcode = ""
         
         if file_type == 'frame':
-            # Use frame G-code from frame configuration
-            frame_data = self.frame_config.get('profile_data', {}).get('hinge', {})
+            # Use frame G-code from profile_data (edited from frame tab)
+            profile_data = self.frame_config.get('profile_data', {})
+            hinge_data = profile_data.get('hinge', {})
+            
             if side == 'left':
-                base_gcode = frame_data.get('gcode_left', '')
+                base_gcode = hinge_data.get('gcode_left', '')
             else:  # right
-                base_gcode = frame_data.get('gcode_right', '')
+                base_gcode = hinge_data.get('gcode_right', '')
+                
         elif file_type == 'lock':
             base_gcode = self._get_profile_gcode(self.profiles['lock'])
         elif file_type == 'hinge':

@@ -163,6 +163,7 @@ class FrameTab(QWidget):
     back_clicked = Signal()
     next_clicked = Signal()
     configuration_changed = Signal(dict)
+    frame_gcode_changed = Signal(dict)  # New signal for frame G-code changes
     
     # Configuration parameters - easily adjustable
     MAX_FRAME_HEIGHT = 2500  # Maximum frame height
@@ -1104,6 +1105,8 @@ class FrameTab(QWidget):
             # Update with new G-code
             self.profile_data['hinge']['gcode_right'] = dialog.get_gcode()
             self.on_config_changed()
+            # Emit frame G-code change signal
+            self.frame_gcode_changed.emit(self.get_frame_gcode_data())
     
     def edit_left_gcode(self):
         """Open G-code editor for left orientation"""
@@ -1121,6 +1124,8 @@ class FrameTab(QWidget):
             # Update with new G-code
             self.profile_data['hinge']['gcode_left'] = dialog.get_gcode()
             self.on_config_changed()
+            # Emit frame G-code change signal
+            self.frame_gcode_changed.emit(self.get_frame_gcode_data())
     
     def on_config_changed(self):
         """Handle any configuration change"""
@@ -1254,3 +1259,21 @@ class FrameTab(QWidget):
             return
         
         self.next_clicked.emit()
+    
+    def get_frame_gcode_data(self):
+        """Get frame G-code data for saving"""
+        return {
+            'gcode_right': self.profile_data.get('hinge', {}).get('gcode_right', ''),
+            'gcode_left': self.profile_data.get('hinge', {}).get('gcode_left', '')
+        }
+    
+    def set_frame_gcode_data(self, frame_gcode_data):
+        """Set frame G-code data from loading"""
+        if 'hinge' not in self.profile_data:
+            self.profile_data['hinge'] = {}
+        
+        self.profile_data['hinge']['gcode_right'] = frame_gcode_data.get('gcode_right', '')
+        self.profile_data['hinge']['gcode_left'] = frame_gcode_data.get('gcode_left', '')
+        
+        # Update configuration to trigger generator update
+        self.on_config_changed()
