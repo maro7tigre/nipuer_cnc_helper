@@ -184,12 +184,13 @@ class TypeSelector(QWidget):
     type_selected = Signal(dict)
     types_modified = Signal()
     
-    def __init__(self, profile_type):
+    def __init__(self, profile_type, dollar_variables_info=None):
         super().__init__()
         self.profile_type = profile_type  # "hinge" or "lock"
         self.selected_type = None
         self.types = {}  # name -> type_data
         self.type_items = {}  # name -> TypeItem widget
+        self.dollar_variables_info = dollar_variables_info or {}
         
         self.setup_ui()
     
@@ -229,6 +230,10 @@ class TypeSelector(QWidget):
         
         # Add initial "+" button
         self.add_type_button()
+    
+    def set_dollar_variables_info(self, dollar_variables_info):
+        """Set available $ variables information"""
+        self.dollar_variables_info = dollar_variables_info
     
     def add_type_button(self):
         """Add the '+' button"""
@@ -280,7 +285,7 @@ class TypeSelector(QWidget):
     
     def add_new_type(self):
         """Create new type"""
-        dialog = TypeEditor(self.profile_type)
+        dialog = TypeEditor(self.profile_type, dollar_variables_info=self.dollar_variables_info)
         if dialog.exec_() == QDialog.Accepted:
             type_data = dialog.get_type_data()
             self.add_type_item(type_data)
@@ -289,7 +294,7 @@ class TypeSelector(QWidget):
     def edit_type(self, name):
         """Edit existing type"""
         if name in self.types:
-            dialog = TypeEditor(self.profile_type, self.types[name])
+            dialog = TypeEditor(self.profile_type, self.types[name], dollar_variables_info=self.dollar_variables_info)
             if dialog.exec_() == QDialog.Accepted:
                 # Update type data
                 new_data = dialog.get_type_data()
@@ -308,7 +313,7 @@ class TypeSelector(QWidget):
             copy_data = self.types[name].copy()
             copy_data["name"] = f"{name} Copy"
             
-            dialog = TypeEditor(self.profile_type, copy_data)
+            dialog = TypeEditor(self.profile_type, copy_data, dollar_variables_info=self.dollar_variables_info)
             if dialog.exec_() == QDialog.Accepted:
                 type_data = dialog.get_type_data()
                 self.add_type_item(type_data)
@@ -332,7 +337,7 @@ class TypeSelector(QWidget):
 
 
 class VariableEditor(QWidget):
-    """Vertical scrollable L variable editor"""
+    """Resizable L variable editor"""
     
     def __init__(self):
         super().__init__()
@@ -379,11 +384,12 @@ class VariableEditor(QWidget):
         self.title_label.setStyleSheet("QLabel { font-weight: bold; padding: 5px; color: #ffffff; background-color: transparent; }")
         layout.addWidget(self.title_label)
         
-        # Scroll area
+        # Scroll area - now resizable
         scroll = QScrollArea()
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll.setWidgetResizable(True)
+        scroll.setMinimumHeight(100)  # Minimum height
         
         # Container
         container = QWidget()
@@ -458,7 +464,7 @@ class VariableEditor(QWidget):
 
 
 class CustomEditor(QWidget):
-    """Vertical scrollable custom variable editor"""
+    """Resizable custom variable editor"""
     
     def __init__(self):
         super().__init__()
@@ -505,11 +511,12 @@ class CustomEditor(QWidget):
         self.title_label.setStyleSheet("QLabel { font-weight: bold; padding: 5px; color: #ffffff; background-color: transparent; }")
         layout.addWidget(self.title_label)
         
-        # Scroll area
+        # Scroll area - now resizable
         scroll = QScrollArea()
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll.setWidgetResizable(True)
+        scroll.setMinimumHeight(100)  # Minimum height
         
         # Container
         container = QWidget()
@@ -583,14 +590,15 @@ class CustomEditor(QWidget):
 
 
 class ProfileEditor(QDialog):
-    """Main profile editor dialog with Python styling and maximize/minimize buttons"""
+    """Main profile editor dialog with validation and $ variables support"""
     
-    def __init__(self, profile_type, profile_data=None, parent=None):
+    def __init__(self, profile_type, profile_data=None, parent=None, dollar_variables_info=None):
         super().__init__(parent)
         self.profile_type = profile_type  # "hinge" or "lock"
         self.profile_data = profile_data or {}
         self.current_type = None
         self.profile_image_path = profile_data.get("image") if profile_data else None
+        self.dollar_variables_info = dollar_variables_info or {}
         
         self.setWindowTitle(f"{'Edit' if profile_data else 'New'} {profile_type.capitalize()} Profile")
         self.setModal(True)
@@ -631,21 +639,20 @@ class ProfileEditor(QDialog):
         layout = QVBoxLayout(self)
         
         # Type selector
-        self.type_selector = TypeSelector(self.profile_type)
+        self.type_selector = TypeSelector(self.profile_type, self.dollar_variables_info)
         self.type_selector.type_selected.connect(self.on_type_selected)
         layout.addWidget(self.type_selector)
         
-        # Main content area
+        # Main content area with resizable splitter
         content_widget = QWidget()
         content_layout = QHBoxLayout(content_widget)
         layout.addWidget(content_widget, 1)
         
-        # Splitter
+        # Splitter - now resizable by user
         splitter = QSplitter(Qt.Horizontal)
         content_layout.addWidget(splitter)
         
-        
-        # Left - Variables
+        # Left - Variables (resizable)
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         
@@ -662,8 +669,6 @@ class ProfileEditor(QDialog):
         left_layout.addStretch()
         splitter.addWidget(left_widget)
         
-        
-            
         # Middle side - Type preview
         middle_widget = QWidget()
         middle_layout = QVBoxLayout(middle_widget)
@@ -687,7 +692,6 @@ class ProfileEditor(QDialog):
         
         splitter.addWidget(middle_widget)
         
-        
         # Right side - Profile info
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
@@ -709,10 +713,8 @@ class ProfileEditor(QDialog):
         right_layout.addStretch()
         splitter.addWidget(right_widget)
 
-        
-        splitter.setStretchFactor(0, 1)   # left side
-        splitter.setStretchFactor(1, 1)   # middle side
-        splitter.setStretchFactor(2, 2)   # right side gets more space
+        # Set initial splitter sizes - user can adjust these
+        splitter.setSizes([300, 400, 300])
         
         # Dialog buttons
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -738,6 +740,25 @@ class ProfileEditor(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+    
+    def accept(self):
+        """Override accept to validate before closing"""
+        # Validate profile name
+        name = self.profile_name_edit.text().strip()
+        if not name:
+            QMessageBox.warning(self, "Missing Name", 
+                              "Please enter a profile name before saving.")
+            self.profile_name_edit.setFocus()
+            return
+        
+        # Validate type selection
+        if not self.current_type:
+            QMessageBox.warning(self, "No Type Selected", 
+                              "Please select a type before saving.")
+            return
+        
+        # All validation passed, close dialog
+        super().accept()
     
     def load_data(self):
         """Load existing profile data"""

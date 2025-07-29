@@ -159,7 +159,7 @@ class ClickableLabel(QLabel):
 
 
 class FrameTab(QWidget):
-    """Frame configuration tab with three-panel layout"""
+    """Frame configuration tab with resizable order widget and three-panel layout"""
     back_clicked = Signal()
     next_clicked = Signal()
     configuration_changed = Signal(dict)
@@ -421,8 +421,6 @@ class FrameTab(QWidget):
             self.pm_inputs.append(pm_input)
         
         layout.addWidget(pm_group)
-        
-        # Remove the profile G-code editor group from left panel
         layout.addStretch()
         
         return widget
@@ -544,17 +542,17 @@ class FrameTab(QWidget):
         
         layout.addWidget(hinge_group)
         
-        # Execution order widget
+        # Execution order widget - now resizable
         order_group = QGroupBox("Component Order")
         order_layout = QVBoxLayout()
         order_group.setLayout(order_layout)
         
         self.order_widget = OrderWidget()
         self.order_widget.order_changed.connect(self.on_order_changed)
-        order_layout.addWidget(self.order_widget)
+        # Remove fixed height to make it resizable
+        order_layout.addWidget(self.order_widget, 1)  # Give it stretch factor
         
-        layout.addWidget(order_group)
-        layout.addStretch()
+        layout.addWidget(order_group, 1)  # Give order group stretch
         
         return widget
     

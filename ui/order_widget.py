@@ -49,7 +49,7 @@ class DraggableListWidget(QListWidget):
 
 
 class OrderWidget(QWidget):
-    """Widget for configuring lock and hinge execution order"""
+    """Resizable widget for configuring lock and hinge execution order"""
     
     order_changed = Signal(list)  # Emits list of items in order
     
@@ -79,11 +79,12 @@ class OrderWidget(QWidget):
         instructions.setStyleSheet("QLabel { color: #bdbdc0; font-size: 11px; }")
         layout.addWidget(instructions)
         
-        # Draggable list
+        # Draggable list - now resizable by user
         self.order_list = DraggableListWidget()
-        self.order_list.setMaximumHeight(150)
+        self.order_list.setMinimumHeight(100)  # Minimum height
+        # Remove fixed height to make it resizable
         self.order_list.order_changed.connect(self.emit_order_changed)
-        layout.addWidget(self.order_list)
+        layout.addWidget(self.order_list, 1)  # Give it stretch factor
         
         # Control buttons
         button_layout = QHBoxLayout()

@@ -6,7 +6,7 @@ from datetime import datetime
 
 
 class GCodeGenerator(QObject):
-    """Enhanced G-code generation engine with $ variable support"""
+    """Enhanced G-code generation engine with dual content tracking"""
     
     files_updated = Signal(dict)  # Emits generated files when updated
     
@@ -23,16 +23,17 @@ class GCodeGenerator(QObject):
             'hinge': {},
             'lock': {}
         }
+        # Dual content tracking: auto vs manual
         self.generated_files = {
             'left': {
-                'frame': {'content': '', 'original': ''},
-                'lock': {'content': '', 'original': ''},
-                'hinge': {'content': '', 'original': ''}
+                'frame': {'auto': '', 'manual': '', 'is_manual': False},
+                'lock': {'auto': '', 'manual': '', 'is_manual': False},
+                'hinge': {'auto': '', 'manual': '', 'is_manual': False}
             },
             'right': {
-                'frame': {'content': '', 'original': ''},
-                'lock': {'content': '', 'original': ''},
-                'hinge': {'content': '', 'original': ''}
+                'frame': {'auto': '', 'manual': '', 'is_manual': False},
+                'lock': {'auto': '', 'manual': '', 'is_manual': False},
+                'hinge': {'auto': '', 'manual': '', 'is_manual': False}
             }
         }
         
@@ -99,42 +100,66 @@ class GCodeGenerator(QObject):
             print(f"Error loading types data: {str(e)}")
     
     def update_frame_config(self, config):
-        """Update frame configuration and regenerate files"""
+        """Update frame configuration and regenerate auto files"""
         self.frame_config = config.copy()
-        self.regenerate_all()
+        self.regenerate_auto()
     
     def update_profiles(self, hinge_profile, lock_profile, left_frame="", right_frame=""):
-        """Update selected profiles and regenerate files"""
+        """Update selected profiles and regenerate auto files"""
         self.profiles['hinge'] = hinge_profile
         self.profiles['lock'] = lock_profile
         self.profiles['left_frame'] = left_frame
         self.profiles['right_frame'] = right_frame
-        self.regenerate_all()
+        self.regenerate_auto()
     
-    def regenerate_all(self):
-        """Regenerate all 6 files and emit update signal"""
+    def regenerate_auto(self):
+        """Regenerate auto-generated content only"""
         if not self._has_required_data():
             return
         
-        # Generate all files
+        # Generate auto content for all files
         for side in ['left', 'right']:
             for file_type in ['frame', 'lock', 'hinge']:
-                content = self._generate_file(side, file_type)
+                auto_content = self._generate_file(side, file_type)
                 
-                # Update original content (auto-generated)
-                self.generated_files[side][file_type]['original'] = content
+                # Update auto content
+                self.generated_files[side][file_type]['auto'] = auto_content
                 
-                # Update current content only if not manually modified
-                current = self.generated_files[side][file_type]['content']
-                previous_original = self.generated_files[side][file_type].get('previous_original', '')
-                
-                if not current or current == previous_original:
-                    self.generated_files[side][file_type]['content'] = content
-                
-                # Store previous original for comparison
-                self.generated_files[side][file_type]['previous_original'] = content
+                # Update manual content only if not manually modified
+                if not self.generated_files[side][file_type]['is_manual']:
+                    self.generated_files[side][file_type]['manual'] = auto_content
         
-        self.files_updated.emit(self.generated_files)
+        self._emit_files_updated()
+    
+    def regenerate_all(self):
+        """Force regenerate all files (copy auto to manual)"""
+        if not self._has_required_data():
+            return
+        
+        # Generate auto content for all files
+        for side in ['left', 'right']:
+            for file_type in ['frame', 'lock', 'hinge']:
+                auto_content = self._generate_file(side, file_type)
+                
+                # Update both auto and manual content
+                self.generated_files[side][file_type]['auto'] = auto_content
+                self.generated_files[side][file_type]['manual'] = auto_content
+                self.generated_files[side][file_type]['is_manual'] = False
+        
+        self._emit_files_updated()
+    
+    def _emit_files_updated(self):
+        """Emit files updated signal in the expected format"""
+        files_data = {}
+        for side in ['left', 'right']:
+            files_data[side] = {}
+            for file_type in ['frame', 'lock', 'hinge']:
+                files_data[side][file_type] = {
+                    'original': self.generated_files[side][file_type]['auto'],
+                    'content': self.generated_files[side][file_type]['manual']
+                }
+        
+        self.files_updated.emit(files_data)
     
     def _has_required_data(self):
         """Check if we have all required data for generation"""
@@ -239,49 +264,57 @@ class GCodeGenerator(QObject):
         return result
     
     def update_file_content(self, side, file_type, new_content):
-        """Update file content after manual editing"""
+        """Update manual file content after editing"""
         if side in self.generated_files and file_type in self.generated_files[side]:
-            self.generated_files[side][file_type]['content'] = new_content
+            self.generated_files[side][file_type]['manual'] = new_content
+            self.generated_files[side][file_type]['is_manual'] = True
     
     def get_file_content(self, side, file_type):
-        """Get current file content"""
-        return self.generated_files.get(side, {}).get(file_type, {}).get('content', '')
+        """Get current manual file content"""
+        return self.generated_files.get(side, {}).get(file_type, {}).get('manual', '')
     
     def is_file_modified(self, side, file_type):
         """Check if file has been manually modified"""
         file_data = self.generated_files.get(side, {}).get(file_type, {})
-        current = file_data.get('content', '')
-        original = file_data.get('original', '')
-        return current != original
+        return file_data.get('is_manual', False)
     
-    def reset_file_to_original(self, side, file_type):
+    def reset_file_to_auto(self, side, file_type):
         """Reset file content to auto-generated version"""
         if side in self.generated_files and file_type in self.generated_files[side]:
-            original = self.generated_files[side][file_type]['original']
-            self.generated_files[side][file_type]['content'] = original
+            auto_content = self.generated_files[side][file_type]['auto']
+            self.generated_files[side][file_type]['manual'] = auto_content
+            self.generated_files[side][file_type]['is_manual'] = False
     
     def export_files(self, output_directory):
-        """Export all files to directory with Windows line endings"""
+        """Export all manual files to directory with Windows line endings"""
         # Create timestamped subdirectory
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         project_dir = os.path.join(output_directory, f"CNC_Project_{timestamp}")
         
         try:
-            os.makedirs(project_dir, exist_ok=True)
+            # Remove existing cnc directory if it exists
+            cnc_dir = os.path.join(output_directory, "cnc")
+            if os.path.exists(cnc_dir):
+                import shutil
+                shutil.rmtree(cnc_dir)
+            
+            # Create new cnc directory structure
+            cnc_dir = os.path.join(output_directory, "cnc")
+            os.makedirs(cnc_dir, exist_ok=True)
             
             exported_files = []
             
-            for side in ['left', 'right']:
-                side_dir = os.path.join(project_dir, side)
+            for side_en, side_fr in [('left', 'gauche'), ('right', 'droite')]:
+                side_dir = os.path.join(cnc_dir, side_fr)
                 os.makedirs(side_dir, exist_ok=True)
                 
                 for file_type in ['frame', 'lock', 'hinge']:
-                    content = self.get_file_content(side, file_type)
+                    content = self.get_file_content(side_en, file_type)
                     if content:
                         # Convert line endings to Windows format
                         content_windows = content.replace('\n', '\r\n').replace('\r\r\n', '\r\n')
                         
-                        filename = f"{side}_{file_type}.txt"
+                        filename = f"{side_en}_{file_type}.txt"
                         filepath = os.path.join(side_dir, filename)
                         
                         with open(filepath, 'w', encoding='utf-8') as f:
@@ -289,7 +322,7 @@ class GCodeGenerator(QObject):
                         
                         exported_files.append(filepath)
             
-            return exported_files, project_dir
+            return exported_files, cnc_dir
             
         except Exception as e:
             raise Exception(f"Export failed: {str(e)}")

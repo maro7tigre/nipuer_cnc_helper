@@ -44,18 +44,16 @@ class ClickableImageLabel(QLabel):
             self.clicked.emit()
 
 
-
-
-
 class TypeEditor(QDialog):
-    """Type editor dialog with improved styling and maximize/minimize buttons"""
+    """Type editor dialog with $ variables support and name validation"""
     
-    def __init__(self, profile_type, type_data=None, parent=None):
+    def __init__(self, profile_type, type_data=None, parent=None, dollar_variables_info=None):
         super().__init__(parent)
         self.profile_type = profile_type
         self.type_data = type_data or {}
         self.image_path = type_data.get("image") if type_data else None
         self.preview_path = type_data.get("preview") if type_data else None
+        self.dollar_variables_info = dollar_variables_info or {}
         
         # Machine variables validation dictionary (from backend)
         self.machine_vars = {
@@ -174,9 +172,16 @@ class TypeEditor(QDialog):
         save_btn.clicked.connect(self.save_gcode)
         gcode_header.addWidget(save_btn)
         
-        # Use the new G-code editor
+        # Use the new G-code editor with $ variables support
         self.gcode_edit = GCodeEditor(self)
-        self.gcode_edit.setPlaceholderText("Enter G-code with variables like {L1}, {custom_var:default}, {$machine_var}, etc.")
+        self.gcode_edit.set_dollar_variables_info(self.dollar_variables_info)
+        self.gcode_edit.setPlaceholderText(
+            "Enter G-code with variables:\n"
+            "L variables: {L1}, {L2:default}\n"
+            "Custom variables: {custom_var:default}\n"
+            "$ variables: {$frame_height}, {$lock_position}, etc.\n\n"
+            "Click the ? button to see all available $ variables."
+        )
         
         # Connect to variable changes
         self.gcode_edit.variables_changed.connect(self.on_variables_changed)
@@ -192,6 +197,19 @@ class TypeEditor(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+    
+    def accept(self):
+        """Override accept to validate before closing"""
+        # Validate type name
+        name = self.name_edit.text().strip()
+        if not name:
+            QMessageBox.warning(self, "Missing Name", 
+                              "Please enter a type name before saving.")
+            self.name_edit.setFocus()
+            return
+        
+        # All validation passed, close dialog
+        super().accept()
     
     def on_variables_changed(self, variables):
         """Handle variables detected in G-code"""

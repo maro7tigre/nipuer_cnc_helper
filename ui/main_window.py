@@ -1,9 +1,10 @@
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSettings
 from .profile_tab import ProfileTab
 from .frame_tab import FrameTab
 from .generate_tab import GenerateTab
 from gcode_generator import GCodeGenerator
+import os
 
 
 class MainWindow(QMainWindow):
@@ -11,6 +12,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("CNC Frame Wizard")
+        
+        # Initialize settings for app config
+        self.settings = QSettings("CNCFrameWizard", "AppConfig")
         
         # Create G-code generator
         self.generator = GCodeGenerator()
@@ -54,8 +58,69 @@ class MainWindow(QMainWindow):
         self.generate_tab.back_clicked.connect(lambda: self.tabs.setCurrentIndex(1))
         self.generate_tab.generate_clicked.connect(self.generate_files)
         
-        # Show window maximized
-        self.showMaximized()
+        # Load app configuration
+        self.load_app_config()
+        
+        # Show window maximized if no saved geometry
+        if not self.settings.contains("geometry"):
+            self.showMaximized()
+        else:
+            self.show()
+    
+    def closeEvent(self, event):
+        """Save app configuration before closing"""
+        self.save_app_config()
+        event.accept()
+    
+    def save_app_config(self):
+        """Save application configuration (window state, positions, etc.)"""
+        try:
+            # Main window geometry and state
+            self.settings.setValue("geometry", self.saveGeometry())
+            self.settings.setValue("windowState", self.saveState())
+            
+            # Output directory from generate tab
+            if hasattr(self.generate_tab, 'output_dir'):
+                self.settings.setValue("output_directory", self.generate_tab.output_dir)
+            
+            # Tab index
+            self.settings.setValue("current_tab", self.tabs.currentIndex())
+            
+            # Force sync to file
+            self.settings.sync()
+            
+        except Exception as e:
+            print(f"Error saving app config: {str(e)}")
+    
+    def load_app_config(self):
+        """Load application configuration"""
+        try:
+            # Main window geometry and state
+            if self.settings.contains("geometry"):
+                self.restoreGeometry(self.settings.value("geometry"))
+            if self.settings.contains("windowState"):
+                self.restoreState(self.settings.value("windowState"))
+            
+            # Output directory
+            if self.settings.contains("output_directory"):
+                output_dir = self.settings.value("output_directory")
+                if output_dir and os.path.exists(output_dir):
+                    self.generate_tab.output_dir = output_dir
+                    self.generate_tab.output_path.setText(output_dir)
+            
+            # Tab index
+            if self.settings.contains("current_tab"):
+                tab_index = int(self.settings.value("current_tab", 0))
+                # Only restore if tabs are enabled
+                if tab_index == 1 and self.tabs.isTabEnabled(1):
+                    self.tabs.setCurrentIndex(1)
+                elif tab_index == 2 and self.tabs.isTabEnabled(2):
+                    self.tabs.setCurrentIndex(2)
+                else:
+                    self.tabs.setCurrentIndex(0)
+            
+        except Exception as e:
+            print(f"Error loading app config: {str(e)}")
         
     # MARK: - Event Handlers
     def on_profiles_selected(self, hinge_profile, lock_profile):
@@ -124,7 +189,10 @@ class MainWindow(QMainWindow):
         # Update frame tab with $ variables info
         self.frame_tab.set_dollar_variables_info(dollar_vars_info)
         
-        # Update generate tab's file items (if it has this method)
+        # Update profile tab with $ variables info
+        self.profile_tab.set_dollar_variables_info(dollar_vars_info)
+        
+        # Update generate tab's file items
         if hasattr(self.generate_tab, 'update_dollar_variables_in_items'):
             self.generate_tab.update_dollar_variables_in_items(dollar_vars_info)
     

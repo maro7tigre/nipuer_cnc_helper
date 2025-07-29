@@ -5,9 +5,10 @@ from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QFont
 from .generated_file_item import GeneratedFileItem
 import os
+import shutil
 
 class GenerateTab(QWidget):
-    """Complete file generation tab with real-time updates and proper border management"""
+    """Complete file generation tab with dual content tracking and proper export"""
     back_clicked = Signal()
     generate_clicked = Signal()
     
@@ -127,16 +128,11 @@ class GenerateTab(QWidget):
         
         toolbar_layout.addStretch()
         
-        # Action buttons
+        # Generate button
         self.generate_button = QPushButton("Generate Files")
         self.generate_button.setObjectName("generate_button")
         self.generate_button.clicked.connect(self.on_generate_clicked)
         toolbar_layout.addWidget(self.generate_button)
-        
-        self.export_button = QPushButton("Export Files")
-        self.export_button.setObjectName("export_button")
-        self.export_button.clicked.connect(self.export_files)
-        toolbar_layout.addWidget(self.export_button)
         
         # Main content area with splitter
         content_splitter = QSplitter(Qt.Horizontal)
@@ -153,7 +149,7 @@ class GenerateTab(QWidget):
         # Set equal sizes
         content_splitter.setSizes([400, 400])
         
-        # Output directory section
+        # Output directory section with export button
         output_layout = QHBoxLayout()
         main_layout.addLayout(output_layout)
         
@@ -165,6 +161,12 @@ class GenerateTab(QWidget):
         browse_button = QPushButton("Browse")
         browse_button.clicked.connect(self.browse_output_dir)
         output_layout.addWidget(browse_button)
+        
+        # Export button next to browse
+        self.export_button = QPushButton("Export Files")
+        self.export_button.setObjectName("export_button")
+        self.export_button.clicked.connect(self.export_files)
+        output_layout.addWidget(self.export_button)
         
         # Bottom navigation
         nav_layout = QHBoxLayout()
@@ -235,53 +237,42 @@ class GenerateTab(QWidget):
         self.set_dollar_variables_info(dollar_variables_info)
     
     def on_files_updated(self, files_data):
-        """Handle updated files from generator - this updates the auto-generated content"""
+        """Handle updated files from generator - dual content tracking"""
         for side in ['left', 'right']:
             for file_type in ['frame', 'lock', 'hinge']:
                 if side in files_data and file_type in files_data[side]:
                     file_data = files_data[side][file_type]
-                    auto_generated_content = file_data.get('original', '')  # This is the auto-generated
-                    current_displayed_content = file_data.get('content', '')  # This is what's shown/edited
+                    auto_content = file_data.get('original', '')  # Auto-generated content
+                    manual_content = file_data.get('content', '')  # Manual/displayed content
                     
                     file_item = self.file_items[side][file_type]
-                    file_item.update_auto_generated_content(auto_generated_content)
                     
-                    # Only update displayed content if it hasn't been manually modified
-                    if not file_item.is_manually_modified():
-                        file_item.update_displayed_content(current_displayed_content)
+                    # Update both auto and manual content
+                    file_item.update_auto_content(auto_content)
+                    file_item.update_manual_content(manual_content)
                     
-                    # Update border color based on whether displayed matches auto-generated
-                    file_item.update_border_color()
+                    # Update visual state
+                    file_item.update_visual_state()
     
     def on_file_content_changed(self, side, file_type, new_content):
         """Handle manual file content changes"""
         if self.generator:
             self.generator.update_file_content(side, file_type, new_content)
             
-        # Mark as manually modified and update border
+        # Update file item state
         file_item = self.file_items[side][file_type]
-        file_item.set_manually_modified(True)
-        file_item.update_border_color()
+        file_item.set_manual_content(new_content)
+        file_item.update_visual_state()
     
     def on_generate_clicked(self):
-        """Handle generate button click - copy auto-generated to displayed"""
+        """Handle generate button click - regenerate all files"""
         # Emit signal to trigger main window generation
         self.generate_clicked.emit()
         
-        # Copy auto-generated content to displayed content for all items
-        for side in ['left', 'right']:
-            for file_type in ['frame', 'lock', 'hinge']:
-                file_item = self.file_items[side][file_type]
-                file_item.copy_auto_to_displayed()
-                file_item.set_manually_modified(False)
-                file_item.update_border_color()
-                
-                # Update generator's content to match
-                if self.generator:
-                    self.generator.update_file_content(side, file_type, file_item.get_displayed_content())
+        # All file items will be updated via on_files_updated signal
     
     def export_files(self):
-        """Export all files to the output directory"""
+        """Export all files to the output directory with proper cnc structure"""
         if not self.generator:
             QMessageBox.warning(self, "No Generator", "Generator not initialized.")
             return
@@ -305,12 +296,40 @@ class GenerateTab(QWidget):
             # Ensure output directory exists
             os.makedirs(self.output_dir, exist_ok=True)
             
-            exported_files, project_dir = self.generator.export_files(self.output_dir)
+            # Remove existing cnc directory if it exists
+            cnc_dir = os.path.join(self.output_dir, "cnc")
+            if os.path.exists(cnc_dir):
+                shutil.rmtree(cnc_dir)
+            
+            # Create new cnc directory structure
+            os.makedirs(cnc_dir, exist_ok=True)
+            
+            exported_files = []
+            
+            for side_en, side_fr in [('left', 'gauche'), ('right', 'droite')]:
+                side_dir = os.path.join(cnc_dir, side_fr)
+                os.makedirs(side_dir, exist_ok=True)
+                
+                for file_type in ['frame', 'lock', 'hinge']:
+                    file_item = self.file_items[side_en][file_type]
+                    content = file_item.get_manual_content()
+                    
+                    if content:
+                        # Convert line endings to Windows format
+                        content_windows = content.replace('\n', '\r\n').replace('\r\r\n', '\r\n')
+                        
+                        filename = f"{side_en}_{file_type}.txt"
+                        filepath = os.path.join(side_dir, filename)
+                        
+                        with open(filepath, 'w', encoding='utf-8') as f:
+                            f.write(content_windows)
+                        
+                        exported_files.append(filepath)
             
             # Show success message
             file_count = len(exported_files)
             QMessageBox.information(self, "Export Successful", 
-                                  f"Exported {file_count} files to:\n{project_dir}")
+                                  f"Exported {file_count} files to:\n{cnc_dir}")
             
             # Optionally open the directory
             reply = QMessageBox.question(self, "Open Directory", 
@@ -321,11 +340,11 @@ class GenerateTab(QWidget):
                 import platform
                 
                 if platform.system() == "Windows":
-                    subprocess.run(["explorer", project_dir])
+                    subprocess.run(["explorer", cnc_dir])
                 elif platform.system() == "Darwin":  # macOS
-                    subprocess.run(["open", project_dir])
+                    subprocess.run(["open", cnc_dir])
                 else:  # Linux
-                    subprocess.run(["xdg-open", project_dir])
+                    subprocess.run(["xdg-open", cnc_dir])
         
         except Exception as e:
             QMessageBox.critical(self, "Export Failed", 

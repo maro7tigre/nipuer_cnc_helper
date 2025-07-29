@@ -87,7 +87,7 @@ class GCodeEditDialog(QDialog):
 
 
 class GeneratedFileItem(QFrame):
-    """Individual file item with dual content tracking and visual modification indication"""
+    """Individual file item with dual content tracking and visual state management"""
     
     content_changed = Signal(str)  # Emits new content when edited
     
@@ -98,16 +98,15 @@ class GeneratedFileItem(QFrame):
         self.side = side  # 'left', 'right'
         self.dollar_variables_info = dollar_variables_info or {}
         
-        # Two sets of content
-        self.auto_generated_content = ""  # Auto-generated from parameters
-        self.displayed_content = ""       # What's shown and can be edited
-        self._manually_modified = False   # Track if user has manually modified
+        # Dual content tracking
+        self.auto_content = ""      # Auto-generated from parameters
+        self.manual_content = ""    # Manual/displayed content (what user sees/edits)
         
         self.setFixedSize(140, 100)
         self.setCursor(Qt.PointingHandCursor)
         
         self.setup_ui()
-        self.update_border_color()
+        self.update_visual_state()
     
     def setup_ui(self):
         """Setup the widget UI"""
@@ -155,38 +154,34 @@ class GeneratedFileItem(QFrame):
         """Update $ variables information"""
         self.dollar_variables_info = dollar_variables_info
     
-    def update_auto_generated_content(self, content):
-        """Update the auto-generated content (from parameter changes)"""
-        self.auto_generated_content = content
+    def update_auto_content(self, content):
+        """Update the auto-generated content"""
+        self.auto_content = content
     
-    def update_displayed_content(self, content):
-        """Update the displayed content (what user sees/edits)"""
-        self.displayed_content = content
+    def update_manual_content(self, content):
+        """Update the manual/displayed content"""
+        self.manual_content = content
     
-    def get_displayed_content(self):
-        """Get the current displayed content"""
-        return self.displayed_content
+    def set_manual_content(self, content):
+        """Set manual content (from user editing)"""
+        self.manual_content = content
     
-    def copy_auto_to_displayed(self):
-        """Copy auto-generated content to displayed content"""
-        self.displayed_content = self.auto_generated_content
+    def get_manual_content(self):
+        """Get the current manual content"""
+        return self.manual_content
     
-    def is_manually_modified(self):
-        """Check if content has been manually modified"""
-        return self._manually_modified
+    def get_auto_content(self):
+        """Get the auto-generated content"""
+        return self.auto_content
     
-    def set_manually_modified(self, modified):
-        """Set manual modification flag"""
-        self._manually_modified = modified
-    
-    def update_border_color(self):
-        """Update border color based on content state"""
-        if self.displayed_content != self.auto_generated_content:
-            # Red border - displayed content differs from auto-generated
+    def update_visual_state(self):
+        """Update visual state based on content comparison"""
+        if self.manual_content != self.auto_content:
+            # Red border - manual content differs from auto-generated
             border_color = "#ff4444"
             bg_color = "#2d1f1f"
         else:
-            # Green border - displayed content matches auto-generated
+            # Green border - manual content matches auto-generated
             border_color = "#23c87b"
             bg_color = "#1f2d20"
         
@@ -211,25 +206,23 @@ class GeneratedFileItem(QFrame):
         """Open G-code editor dialog"""
         dialog = GCodeEditDialog(
             f"{self.side.title()} {self.name}", 
-            self.displayed_content, 
+            self.manual_content, 
             self.dollar_variables_info,
             self
         )
         
         if dialog.exec_() == QDialog.Accepted:
             new_content = dialog.get_content()
-            self.displayed_content = new_content
-            self._manually_modified = True
-            self.update_border_color()
+            self.manual_content = new_content
+            self.update_visual_state()
             self.content_changed.emit(new_content)
     
     def reset_to_auto_generated(self):
-        """Reset displayed content to auto-generated version"""
-        self.displayed_content = self.auto_generated_content
-        self._manually_modified = False
-        self.update_border_color()
-        self.content_changed.emit(self.displayed_content)
+        """Reset manual content to auto-generated version"""
+        self.manual_content = self.auto_content
+        self.update_visual_state()
+        self.content_changed.emit(self.manual_content)
     
     def has_content(self):
-        """Check if file has any displayed content"""
-        return bool(self.displayed_content.strip())
+        """Check if file has any manual content"""
+        return bool(self.manual_content.strip())

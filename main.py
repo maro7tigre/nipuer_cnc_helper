@@ -12,6 +12,19 @@ def main():
     theme = ThemeManager("purple")  # Just change "purple" to another theme name
     theme.apply_theme(app)
     
+    # Force application-wide background color for Linux compatibility
+    app.setStyleSheet(app.styleSheet() + """
+        QMainWindow {
+            background-color: #282a36;
+        }
+        QWidget {
+            background-color: #282a36;
+        }
+        QTabWidget > QWidget {
+            background-color: #282a36;
+        }
+    """)
+    
     # Create and show main window
     window = MainWindow()
     window.show()
