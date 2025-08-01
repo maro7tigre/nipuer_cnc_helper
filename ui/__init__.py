@@ -1,12 +1,12 @@
 # UI package initialization
 from .main_window import MainWindow
-from .profile_tab import ProfileTab
-from .frame_tab import FrameTab
-from .generate_tab import GenerateTab
-from .profile_editor import ProfileEditor
-from .preview_dialog import PreviewDialog
-from .profile_gcode_dialog import ProfileGCodeDialog
-from .order_widget import OrderWidget
+from .profile.profile_tab import ProfileTab
+from .frame.frame_tab import FrameTab
+from .generate.generate_tab import GenerateTab
+from .profile.profile_editor import ProfileEditor
+from .generate.preview_dialog import PreviewDialog
+from .profile.profile_gcode_dialog import ProfileGCodeDialog
+from .frame.order_widget import OrderWidget
 
 __all__ = [
     'MainWindow',

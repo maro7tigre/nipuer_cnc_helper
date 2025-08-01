@@ -1,8 +1,8 @@
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget
 from PySide6.QtCore import Qt, QSettings
-from .profile_tab import ProfileTab
-from .frame_tab import FrameTab
-from .generate_tab import GenerateTab
+from .profile.profile_tab import ProfileTab
+from .frame.frame_tab import FrameTab
+from .generate.generate_tab import GenerateTab
 from gcode_generator import GCodeGenerator
 import os
 
