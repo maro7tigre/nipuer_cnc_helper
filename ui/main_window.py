@@ -135,8 +135,7 @@ class MainWindow(QMainWindow):
         try:
             config = {
                 "geometry": self.saveGeometry().data().hex(),
-                "windowState": self.saveState().data().hex(),
-                "current_tab": self.tabs.currentIndex()
+                "windowState": self.saveState().data().hex()
             }
             
             # Get config from each tab
@@ -174,16 +173,11 @@ class MainWindow(QMainWindow):
                 self.frame_tab.set_app_config(config["frame_tab"])
             if hasattr(self.generate_tab, 'set_app_config') and "generate_tab" in config:
                 self.generate_tab.set_app_config(config["generate_tab"])
-            
-            # Restore tab index
-            if "current_tab" in config:
-                tab_index = config["current_tab"]
-                if 0 <= tab_index < self.tabs.count() and self.tabs.isTabEnabled(tab_index):
-                    self.tabs.setCurrentIndex(tab_index)
         except Exception as e:
             print(f"Error loading app config: {str(e)}")
     
     # MARK: - Profile Set Methods
+    # TODO: add a parameter for when the user save or load a profile set while if none just save and load profiles/current.json
     def save_profile_set(self):
         """Save current profile set to current.json"""
         try:
@@ -205,6 +199,7 @@ class MainWindow(QMainWindow):
             
             with open("profiles/current.json", 'w') as f:
                 json.dump(data, f, indent=2)
+            #TODO: if hinge or lock is selected, update current_gcodes with selected profiles
         except Exception as e:
             print(f"Error saving profile set: {str(e)}")
     
@@ -264,6 +259,8 @@ class MainWindow(QMainWindow):
                     self.dollar_variables.update(data["dollar_variables"])
                 if "generated_gcodes" in data:
                     self.generated_gcodes = data["generated_gcodes"]
+                    
+                #TODO: if profiles are selected enable second and if all frame tab configuration are valid enable third tab
                 return True
         except Exception as e:
             print(f"Error loading project: {str(e)}")
@@ -318,13 +315,18 @@ class MainWindow(QMainWindow):
     def copy_to_generated(self):
         """Copy processed gcodes to generated"""
         self.generated_gcodes = self.processed_gcodes.copy()
+        
+    def update_generated_gcode(self, name, gcode):
+        """Update generated gcode"""
+        if name in self.generated_gcodes:
+            self.generated_gcodes[name] = gcode
     
     def update_dollar_variable(self, name, value):
         """Update $variable"""
         self.dollar_variables[name] = value
         self.process_gcodes()
     
-    # MARK: - Get Variables Methods  
+    # MARK: - Get Variables Methods 
     def get_hinge_type(self, name):
         """Get hinge type data"""
         return self.hinges_types.get(name)
@@ -340,6 +342,14 @@ class MainWindow(QMainWindow):
     def get_lock_profile(self, name):
         """Get lock profile data"""
         return self.locks_profiles.get(name)
+    
+    def get_hinge_profile_gcode(self, name):
+        """Get hinge profile gcode"""
+        #TODO: get the selected type of the profile, get the gcode of the type and replace the L and custom variables
+    
+    def get_lock_profile_gcode(self, name):
+        """Get lock profile gcode"""
+        #TODO
     
     def get_current_gcode(self, name):
         """Get current gcode"""
@@ -357,7 +367,10 @@ class MainWindow(QMainWindow):
         """Get $variable or all $variables if name is None"""
         if name is None:
             return self.dollar_variables.copy()
-        return self.dollar_variables.get(name)
+        elif name in self.dollar_variables:
+            return self.dollar_variables.get(name)
+        else:
+            return "" # Return empty string if variable not found
     
     # MARK: - Helper Methods
     def replace_dollar_variables(self, gcode):
@@ -415,42 +428,7 @@ class MainWindow(QMainWindow):
             self.update_current_gcode("left_gcode", frame_gcode_data["gcode_left"])
     
     def generate_files(self):
-        """Generate final gcode files"""
-        # Check if we have required data
-        selected_hinge = self.get_dollar_variable("selected_hinge")
-        selected_lock = self.get_dollar_variable("selected_lock")
-        
-        if not selected_hinge or not selected_lock:
-            print("Missing profile selections")
-            return
-        
-        # Get profile data
-        hinge_profile = self.get_hinge_profile(selected_hinge)
-        lock_profile = self.get_lock_profile(selected_lock)
-        
-        if not hinge_profile or not lock_profile:
-            print("Profile data not found")
-            return
-        
-        # Get type data
-        hinge_type_name = hinge_profile.get('type')
-        lock_type_name = lock_profile.get('type')
-        
-        if not hinge_type_name or not lock_type_name:
-            print("Profile types not found")
-            return
-        
-        hinge_type = self.get_hinge_type(hinge_type_name)
-        lock_type = self.get_lock_type(lock_type_name)
-        
-        if not hinge_type or not lock_type:
-            print("Type data not found")
-            return
-        
-        # Update current gcodes with profile and variable substitution
-        self.update_current_gcode("hinge_gcode", self.substitute_profile_variables(hinge_type.get('gcode', ''), hinge_profile))
-        self.update_current_gcode("lock_gcode", self.substitute_profile_variables(lock_type.get('gcode', ''), lock_profile))
-        
+        """Generate final gcode files"""        
         # Copy processed to generated
         self.copy_to_generated()
         
@@ -458,24 +436,3 @@ class MainWindow(QMainWindow):
         self.generate_tab.update_files_from_main_window()
         
         print("Files generated successfully!")
-    
-    def substitute_profile_variables(self, gcode, profile):
-        """Substitute L and custom variables in gcode with profile values"""
-        if not gcode or not profile:
-            return gcode
-        
-        result = gcode
-        
-        # Substitute L variables
-        l_variables = profile.get('l_variables', {})
-        for var_name, value in l_variables.items():
-            pattern = r'\{' + re.escape(var_name) + r'(?::[^}]*)?\}'
-            result = re.sub(pattern, str(value), result)
-        
-        # Substitute custom variables
-        custom_variables = profile.get('custom_variables', {})
-        for var_name, value in custom_variables.items():
-            pattern = r'\{' + re.escape(var_name) + r'(?::[^}]*)?\}'
-            result = re.sub(pattern, str(value), result)
-        
-        return result
