@@ -7,7 +7,7 @@ import json
 import os
 import shutil
 from datetime import datetime
-from .profile_editor import ProfileEditor, TypeSelector
+from ..dialogs.profile_editor import ProfileEditor, TypeSelector
 
 
 class ProfileItem(QFrame):

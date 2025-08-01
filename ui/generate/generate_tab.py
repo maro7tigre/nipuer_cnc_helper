@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
                              QScrollArea, QGridLayout, QFrame, QSplitter)
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QFont
-from .generated_file_item import GeneratedFileItem
+from .widgets.generated_file_item import GeneratedFileItem
 import os
 import shutil
 

@@ -2,7 +2,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLabel, QDialogButtonBox, QFileDialog, QMessageBox)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
-from gcode_ide import GCodeEditor
+from ..gcode_ide import GCodeEditor
 
 
 class ProfileGCodeDialog(QDialog):

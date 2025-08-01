@@ -4,8 +4,8 @@ from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
                              QRadioButton, QSpinBox)
 from PySide6.QtCore import Signal, Qt, QTimer
 from PySide6.QtGui import QDoubleValidator, QPainter, QColor, QPen, QBrush
-from ..profile.profile_gcode_dialog import ProfileGCodeDialog
-from .order_widget import OrderWidget
+from ..dialogs.gcode_dialog import ProfileGCodeDialog
+from .widgets.order_widget import OrderWidget
 
 
 class FramePreview(QWidget):
