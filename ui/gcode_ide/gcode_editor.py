@@ -1,3 +1,10 @@
+"""
+G-Code Editor
+
+Complete G-code editor with syntax highlighting, line numbers, 
+error indication, and $ variables support.
+"""
+
 from PySide6.QtWidgets import (QPlainTextEdit, QWidget, QTextEdit, QToolTip, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QDialog, QScrollArea, QLabel,
                              QDialogButtonBox)
@@ -128,7 +135,7 @@ class DollarVariablesDialog(QDialog):
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(8, 5, 8, 5)
         
-        # Variable name - FIXED: Show {$var_name} instead of ${var_name}
+        # Variable name - Show {$var_name} instead of ${var_name}
         name_label = QLabel(f"{{${var_name}}}")
         name_label.setFont(QFont("Consolas", 11, QFont.Bold))
         name_label.setStyleSheet("QLabel { color: #23c87b; }")
@@ -140,7 +147,7 @@ class DollarVariablesDialog(QDialog):
         desc_label.setStyleSheet("QLabel { color: #bdbdc0; font-size: 10px; }")
         layout.addWidget(desc_label)
         
-        # Make clickable - FIXED: Emit {$var_name} instead of ${var_name}
+        # Make clickable - Emit {$var_name} instead of ${var_name}
         def on_click():
             self.variable_selected.emit(f"{{${var_name}}}")
             self.accept()
@@ -150,7 +157,6 @@ class DollarVariablesDialog(QDialog):
         return widget
 
 
-# MARK: - Syntax Highlighter
 class GCodeSyntaxHighlighter(QSyntaxHighlighter):
     """Enhanced G-code syntax highlighter with $ variable validation"""
     
@@ -354,7 +360,6 @@ class GCodeSyntaxHighlighter(QSyntaxHighlighter):
         return -1
 
 
-# MARK: - Line Number Area
 class LineNumberArea(QWidget):
     """Line number area with error indication"""
     
@@ -401,7 +406,6 @@ class LineNumberArea(QWidget):
                 blockNumber += 1
 
 
-# MARK: - Main Editor
 class GCodeEditor(QPlainTextEdit):
     """G-code editor with smart highlighting, $ variable support, and help dialog"""
     
@@ -500,7 +504,7 @@ class GCodeEditor(QPlainTextEdit):
         cursor = self.textCursor()
         cursor.insertText(variable_text)
 
-    # MARK: - Line Numbers
+    # Line Numbers
     def lineNumberAreaWidth(self):
         """Calculate line number area width"""
         digits = 1
@@ -547,7 +551,7 @@ class GCodeEditor(QPlainTextEdit):
             bottom = top + self.blockBoundingRect(block).height()
             blockNumber += 1
 
-    # MARK: - Highlighting
+    # Highlighting
     def onCursorPositionChanged(self):
         self.highlightCurrentLine()
         if hasattr(self.module, 'updatePreviewColors'):
@@ -646,7 +650,7 @@ class GCodeEditor(QPlainTextEdit):
         else:
             return [cursor.blockNumber() + 1]
 
-    # MARK: - Variables
+    # Variables
     def onTextChanged(self):
         """Extract variables from text"""
         text = self.toPlainText()
@@ -676,7 +680,7 @@ class GCodeEditor(QPlainTextEdit):
         else:
             cursor.insertText(f"{{{variable_name}}}")
 
-    # MARK: - Utilities
+    # Utilities
     def setErrors(self, errors):
         self.errors = errors
         self.lineNumberArea.update()

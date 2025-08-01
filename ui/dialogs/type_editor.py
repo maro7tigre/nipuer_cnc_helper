@@ -1,47 +1,17 @@
-from PySide6.QtWidgets import (QDialog, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, 
-                             QLabel, QScrollArea, QGridLayout, QFrame, QLineEdit,
-                             QTextEdit, QDialogButtonBox, QFileDialog, QMessageBox,
-                             QSplitter, QSizePolicy)
-from PySide6.QtCore import Signal, Qt, QSize, QRegularExpression
-from PySide6.QtGui import QPixmap, QPainter, QColor, QRegularExpressionValidator, QDoubleValidator
-import re
-import json
+"""
+Type Editor Dialog
+
+Type editor dialog with $ variables support and name validation.
+"""
+
+from PySide6.QtWidgets import QDialog, QWidget, QHBoxLayout, QVBoxLayout, QFileDialog, QMessageBox, QDialogButtonBox
+from PySide6.QtCore import Signal, Qt
+from PySide6.QtGui import QFont, QPixmap, QPainter, QColor
 import os
-from datetime import datetime
 
-# Import the new G-code editor
-from gcode_ide import GCodeEditor
-
-
-class ClickableImageLabel(QLabel):
-    """Clickable image label with Python-based styling"""
-    clicked = Signal()
-    
-    def __init__(self, size=(100, 100)):
-        super().__init__()
-        self.setFixedSize(*size)
-        self.setAlignment(Qt.AlignCenter)
-        self.setCursor(Qt.PointingHandCursor)
-        self.setScaledContents(False)
-        self.apply_default_style()
-        
-    def apply_default_style(self):
-        """Apply default styling"""
-        self.setStyleSheet("""
-            ClickableImageLabel {
-                background-color: #44475c;
-                border: 2px solid #6f779a;
-                border-radius: 4px;
-            }
-            ClickableImageLabel:hover {
-                background-color: #3a3d4d;
-                border: 2px solid #BB86FC;
-            }
-        """)
-        
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.clicked.emit()
+from ..widgets.themed_widgets import ThemedLabel, ThemedLineEdit, ThemedSplitter, PurpleButton
+from ..widgets.simple_widgets import ClickableImageLabel, PlaceholderPixmap
+from ..gcode_ide import GCodeEditor
 
 
 class TypeEditor(QDialog):
@@ -55,15 +25,6 @@ class TypeEditor(QDialog):
         self.preview_path = type_data.get("preview") if type_data else None
         self.dollar_variables_info = dollar_variables_info or {}
         
-        # Machine variables validation dictionary (from backend)
-        self.machine_vars = {
-            "machine_x_offset": True,
-            "machine_y_offset": True,
-            "machine_z_offset": True,
-            "spindle_speed": True,
-            "feed_rate": True
-        }
-        
         self.setWindowTitle(f"{'Edit' if type_data else 'New'} {profile_type.capitalize()} Type")
         self.setModal(True)
         self.resize(1000, 700)
@@ -73,54 +34,25 @@ class TypeEditor(QDialog):
                            Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint | 
                            Qt.WindowCloseButtonHint)
         
-        # Apply dialog styling
+        self.apply_styling()
+        self.setup_ui()
+        self.load_data()
+    
+    def apply_styling(self):
+        """Apply dialog styling"""
         self.setStyleSheet("""
             TypeEditor {
                 background-color: #282a36;
                 color: #ffffff;
             }
-            TypeEditor QLabel {
-                color: #ffffff;
-                background-color: transparent;
-            }
-            TypeEditor QLineEdit {
-                background-color: #1d1f28;
-                color: #ffffff;
-                border: 1px solid #6f779a;
-                border-radius: 4px;
-                padding: 4px;
-            }
-            TypeEditor QLineEdit:focus {
-                border: 1px solid #BB86FC;
-            }
-            TypeEditor QPushButton {
-                background-color: #1d1f28;
-                color: #BB86FC;
-                border: 2px solid #BB86FC;
-                border-radius: 4px;
-                padding: 6px 12px;
-                min-width: 80px;
-            }
-            TypeEditor QPushButton:hover {
-                background-color: #000000;
-                color: #9965DA;
-                border: 2px solid #9965DA;
-            }
-            TypeEditor QPushButton:pressed {
-                background-color: #BB86FC;
-                color: #1d1f28;
-            }
         """)
-        
-        self.setup_ui()
-        self.load_data()
     
     def setup_ui(self):
         """Setup UI components"""
         layout = QVBoxLayout(self)
         
         # Main content split
-        content_split = QSplitter(Qt.Horizontal)
+        content_split = ThemedSplitter(Qt.Horizontal)
         layout.addWidget(content_split, 1)
         
         # Left side - Images and name
@@ -128,14 +60,14 @@ class TypeEditor(QDialog):
         left_layout = QVBoxLayout(left_widget)
         
         # Type name
-        left_layout.addWidget(QLabel("Type Name:"))
-        self.name_edit = QLineEdit()
+        left_layout.addWidget(ThemedLabel("Type Name:"))
+        self.name_edit = ThemedLineEdit()
         left_layout.addWidget(self.name_edit)
         
         left_layout.addSpacing(20)
         
         # Type image
-        left_layout.addWidget(QLabel("Type Image:"))
+        left_layout.addWidget(ThemedLabel("Type Image:"))
         self.image_label = ClickableImageLabel((150, 150))
         self.image_label.clicked.connect(self.select_image)
         self.set_placeholder_image()
@@ -144,7 +76,7 @@ class TypeEditor(QDialog):
         left_layout.addSpacing(20)
         
         # Preview image
-        left_layout.addWidget(QLabel("Preview Image:"))
+        left_layout.addWidget(ThemedLabel("Preview Image:"))
         self.preview_label = ClickableImageLabel((200, 200))
         self.preview_label.clicked.connect(self.select_preview)
         self.set_placeholder_preview()
@@ -161,14 +93,14 @@ class TypeEditor(QDialog):
         gcode_header = QHBoxLayout()
         middle_layout.addLayout(gcode_header)
         
-        gcode_header.addWidget(QLabel("G-Code Template:"))
+        gcode_header.addWidget(ThemedLabel("G-Code Template:"))
         gcode_header.addStretch()
         
-        upload_btn = QPushButton("Upload")
+        upload_btn = PurpleButton("Upload")
         upload_btn.clicked.connect(self.upload_gcode)
         gcode_header.addWidget(upload_btn)
         
-        save_btn = QPushButton("Save")
+        save_btn = PurpleButton("Save")
         save_btn.clicked.connect(self.save_gcode)
         gcode_header.addWidget(save_btn)
         
@@ -194,6 +126,25 @@ class TypeEditor(QDialog):
         
         # Dialog buttons
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.setStyleSheet("""
+            QDialogButtonBox QPushButton {
+                background-color: #1d1f28;
+                color: #23c87b;
+                border: 2px solid #23c87b;
+                border-radius: 4px;
+                padding: 6px 12px;
+                min-width: 80px;
+            }
+            QDialogButtonBox QPushButton:hover {
+                background-color: #000000;
+                color: #1a945b;
+                border: 2px solid #1a945b;
+            }
+            QDialogButtonBox QPushButton:pressed {
+                background-color: #23c87b;
+                color: #1d1f28;
+            }
+        """)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -302,20 +253,10 @@ class TypeEditor(QDialog):
     
     def set_placeholder_image(self):
         """Set placeholder for type image"""
-        pixmap = QPixmap(150, 150)
-        pixmap.fill(QColor("#44475c"))
-        painter = QPainter(pixmap)
-        painter.setPen(QColor("#bdbdc0"))
-        painter.drawText(pixmap.rect(), Qt.AlignCenter, "Type Image")
-        painter.end()
+        pixmap = PlaceholderPixmap.create((150, 150), "Type Image")
         self.image_label.setPixmap(pixmap)
     
     def set_placeholder_preview(self):
         """Set placeholder for preview image"""
-        pixmap = QPixmap(200, 200)
-        pixmap.fill(QColor("#44475c"))
-        painter = QPainter(pixmap)
-        painter.setPen(QColor("#bdbdc0"))
-        painter.drawText(pixmap.rect(), Qt.AlignCenter, "Preview")
-        painter.end()
+        pixmap = PlaceholderPixmap.create((200, 200), "Preview")
         self.preview_label.setPixmap(pixmap)

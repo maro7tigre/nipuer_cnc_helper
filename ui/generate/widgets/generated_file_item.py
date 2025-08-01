@@ -1,7 +1,14 @@
-from PySide6.QtWidgets import (QFrame, QVBoxLayout, QLabel, QDialog, QHBoxLayout, 
-                             QPushButton)
+"""
+Generated File Item Widget
+
+Individual file item with dual content tracking and visual state management.
+"""
+
+from PySide6.QtWidgets import QFrame, QVBoxLayout, QDialog
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QFont, QPixmap, QPainter, QColor
+from PySide6.QtGui import QFont
+from ...widgets.themed_widgets import ThemedLabel
+from ...widgets.simple_widgets import ClickableImageLabel, PlaceholderPixmap
 
 
 class GCodeEditDialog(QDialog):
@@ -56,7 +63,8 @@ class GCodeEditDialog(QDialog):
     
     def setup_ui(self, content):
         """Setup the dialog UI"""
-        from gcode_ide import GCodeEditor
+        from ...gcode_ide import GCodeEditor
+        from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QPushButton
         
         layout = QVBoxLayout(self)
         
@@ -91,8 +99,8 @@ class GeneratedFileItem(QFrame):
     
     content_changed = Signal(str)  # Emits new content when edited
     
-    def __init__(self, name, file_type, side, dollar_variables_info=None):
-        super().__init__()
+    def __init__(self, name, file_type, side, dollar_variables_info=None, parent=None):
+        super().__init__(parent)
         self.name = name
         self.file_type = file_type  # 'frame', 'lock', 'hinge'
         self.side = side  # 'left', 'right'
@@ -114,40 +122,32 @@ class GeneratedFileItem(QFrame):
         layout.setContentsMargins(8, 8, 8, 8)
         
         # Icon area
-        self.icon_label = QLabel()
-        self.icon_label.setFixedSize(60, 60)
+        self.icon_label = ClickableImageLabel((60, 60))
         self.icon_label.setAlignment(Qt.AlignCenter)
         self.icon_label.setScaledContents(True)
         self.update_icon()
         layout.addWidget(self.icon_label, alignment=Qt.AlignCenter)
         
         # Name label
-        self.name_label = QLabel(self.name)
+        self.name_label = ThemedLabel(self.name)
         self.name_label.setAlignment(Qt.AlignCenter)
         self.name_label.setWordWrap(True)
         self.name_label.setFont(QFont("Arial", 9, QFont.Bold))
-        self.name_label.setStyleSheet("QLabel { color: #ffffff; background-color: transparent; }")
         layout.addWidget(self.name_label)
     
     def update_icon(self):
         """Update the icon based on file type"""
-        pixmap = QPixmap(60, 60)
-        pixmap.fill(QColor("#44475c"))
-        
-        painter = QPainter(pixmap)
-        painter.setPen(QColor("#bdbdc0"))
-        
         # Different icons for different file types
         if self.file_type == 'frame':
-            painter.drawText(pixmap.rect(), Qt.AlignCenter, "🔲")
+            icon = "🔲"
         elif self.file_type == 'lock':
-            painter.drawText(pixmap.rect(), Qt.AlignCenter, "🔒")
+            icon = "🔒"
         elif self.file_type == 'hinge':
-            painter.drawText(pixmap.rect(), Qt.AlignCenter, "🔗")
+            icon = "🔗"
         else:
-            painter.drawText(pixmap.rect(), Qt.AlignCenter, "📄")
+            icon = "📄"
         
-        painter.end()
+        pixmap = PlaceholderPixmap.create((60, 60), icon, "#44475c", "#bdbdc0")
         self.icon_label.setPixmap(pixmap)
     
     def set_dollar_variables_info(self, dollar_variables_info):

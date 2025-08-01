@@ -1,18 +1,10 @@
-# UI package initialization
-from .main_window import MainWindow
-from .profile.profile_tab import ProfileTab
-from .frame.frame_tab import FrameTab
-from .generate.generate_tab import GenerateTab
-from .dialogs.profile_editor import ProfileEditor
-from .dialogs.preview_dialog import PreviewDialog
-from .frame.widgets.order_widget import OrderWidget
+"""
+UI Package
 
-__all__ = [
-    'MainWindow',
-    'ProfileTab', 
-    'FrameTab',
-    'GenerateTab',
-    'ProfileEditor',
-    'PreviewDialog',
-    'OrderWidget'
-]
+Main UI package for the CNC Frame Wizard application.
+Contains all user interface components organized in a clean, modular structure.
+"""
+
+from .main_window import MainWindow
+
+__all__ = ['MainWindow']

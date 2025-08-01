@@ -1,51 +1,13 @@
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QListWidget, QListWidgetItem, QPushButton)
+"""
+Order Widget
+
+Resizable widget for configuring lock and hinge execution order.
+"""
+
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QListWidgetItem
 from PySide6.QtCore import Qt, Signal
-
-
-class DraggableListWidget(QListWidget):
-    """Custom list widget with drag and drop reordering"""
-    
-    order_changed = Signal()
-    
-    def __init__(self):
-        super().__init__()
-        self.setDragDropMode(QListWidget.InternalMove)
-        self.setDefaultDropAction(Qt.MoveAction)
-        self.setSelectionMode(QListWidget.SingleSelection)
-        
-        # Apply styling
-        self.setStyleSheet("""
-            QListWidget {
-                background-color: #1d1f28;
-                color: #ffffff;
-                border: 1px solid #6f779a;
-                border-radius: 4px;
-                padding: 4px;
-                outline: none;
-            }
-            QListWidget::item {
-                background-color: #44475c;
-                border: 1px solid #6f779a;
-                border-radius: 3px;
-                padding: 6px;
-                margin: 2px;
-            }
-            QListWidget::item:selected {
-                background-color: #BB86FC;
-                color: #1d1f28;
-                border: 1px solid #BB86FC;
-            }
-            QListWidget::item:hover {
-                background-color: #6f779a;
-                border: 1px solid #8b95c0;
-            }
-        """)
-    
-    def dropEvent(self, event):
-        """Handle drop event and emit signal"""
-        super().dropEvent(event)
-        self.order_changed.emit()
+from ...widgets.themed_widgets import ThemedLabel, PurpleButton
+from .draggable_list import DraggableListWidget
 
 
 class OrderWidget(QWidget):
@@ -53,8 +15,8 @@ class OrderWidget(QWidget):
     
     order_changed = Signal(list)  # Emits list of items in order
     
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self.setup_ui()
         
     def setup_ui(self):
@@ -63,26 +25,18 @@ class OrderWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         
         # Title
-        title = QLabel("Execution Order")
-        title.setStyleSheet("""
-            QLabel { 
-                font-weight: bold; 
-                padding: 5px; 
-                color: #ffffff; 
-                background-color: transparent; 
-            }
-        """)
+        title = ThemedLabel("Execution Order")
+        title.setStyleSheet("QLabel { font-weight: bold; padding: 5px; }")
         layout.addWidget(title)
         
         # Instructions
-        instructions = QLabel("Drag items to reorder execution sequence:")
+        instructions = ThemedLabel("Drag items to reorder execution sequence:")
         instructions.setStyleSheet("QLabel { color: #bdbdc0; font-size: 11px; }")
         layout.addWidget(instructions)
         
         # Draggable list - now resizable by user
         self.order_list = DraggableListWidget()
         self.order_list.setMinimumHeight(100)  # Minimum height
-        # Remove fixed height to make it resizable
         self.order_list.order_changed.connect(self.emit_order_changed)
         layout.addWidget(self.order_list, 1)  # Give it stretch factor
         
@@ -90,37 +44,53 @@ class OrderWidget(QWidget):
         button_layout = QHBoxLayout()
         layout.addLayout(button_layout)
         
-        self.move_up_btn = QPushButton("↑ Up")
+        self.move_up_btn = PurpleButton("↑ Up")
         self.move_up_btn.clicked.connect(self.move_up)
+        self.move_up_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1d1f28;
+                color: #BB86FC;
+                border: 1px solid #BB86FC;
+                border-radius: 3px;
+                padding: 4px 8px;
+                min-width: 60px;
+            }
+            QPushButton:hover {
+                background-color: #000000;
+                color: #9965DA;
+                border: 1px solid #9965DA;
+            }
+            QPushButton:pressed {
+                background-color: #BB86FC;
+                color: #1d1f28;
+            }
+        """)
         button_layout.addWidget(self.move_up_btn)
         
-        self.move_down_btn = QPushButton("↓ Down")
+        self.move_down_btn = PurpleButton("↓ Down")
         self.move_down_btn.clicked.connect(self.move_down)
+        self.move_down_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1d1f28;
+                color: #BB86FC;
+                border: 1px solid #BB86FC;
+                border-radius: 3px;
+                padding: 4px 8px;
+                min-width: 60px;
+            }
+            QPushButton:hover {
+                background-color: #000000;
+                color: #9965DA;
+                border: 1px solid #9965DA;
+            }
+            QPushButton:pressed {
+                background-color: #BB86FC;
+                color: #1d1f28;
+            }
+        """)
         button_layout.addWidget(self.move_down_btn)
         
         button_layout.addStretch()
-        
-        # Apply button styling
-        for btn in [self.move_up_btn, self.move_down_btn]:
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #1d1f28;
-                    color: #BB86FC;
-                    border: 1px solid #BB86FC;
-                    border-radius: 3px;
-                    padding: 4px 8px;
-                    min-width: 60px;
-                }
-                QPushButton:hover {
-                    background-color: #000000;
-                    color: #9965DA;
-                    border: 1px solid #9965DA;
-                }
-                QPushButton:pressed {
-                    background-color: #BB86FC;
-                    color: #1d1f28;
-                }
-            """)
     
     def update_items(self, lock_active, hinge_count, hinge_active):
         """Update the list based on active components"""

@@ -1,7 +1,14 @@
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, 
-                             QLabel, QDialogButtonBox, QFileDialog, QMessageBox)
+"""
+Profile GCode Dialog
+
+Enhanced G-code editor dialog for profiles with $ variables support.
+"""
+
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QDialogButtonBox, QFileDialog, QMessageBox
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
+
+from ..widgets.themed_widgets import ThemedLabel, PurpleButton
 from ..gcode_ide import GCodeEditor
 
 
@@ -32,12 +39,12 @@ class ProfileGCodeDialog(QDialog):
         layout = QVBoxLayout(self)
         
         # Header with title and instructions
-        title = QLabel(f"G-Code Editor - {self.profile_name}")
+        title = ThemedLabel(f"G-Code Editor - {self.profile_name}")
         title.setFont(QFont("Segoe UI", 14, QFont.Bold))
         layout.addWidget(title)
         
         # Instructions for $ variables
-        instructions = QLabel(
+        instructions = ThemedLabel(
             "Use $ variables for frame data: {$frame_height}, {$lock_position}, {$hinge1_position}, etc.\n"
             "Click the ? button in the editor to see all available $ variables."
         )
@@ -49,14 +56,14 @@ class ProfileGCodeDialog(QDialog):
         toolbar = QHBoxLayout()
         layout.addLayout(toolbar)
         
-        toolbar.addWidget(QLabel("G-Code:"))
+        toolbar.addWidget(ThemedLabel("G-Code:"))
         toolbar.addStretch()
         
-        upload_btn = QPushButton("Upload File")
+        upload_btn = PurpleButton("Upload File")
         upload_btn.clicked.connect(self.upload_gcode)
         toolbar.addWidget(upload_btn)
         
-        save_btn = QPushButton("Save to File")
+        save_btn = PurpleButton("Save to File")
         save_btn.clicked.connect(self.save_gcode_to_file)
         toolbar.addWidget(save_btn)
         
@@ -84,27 +91,6 @@ class ProfileGCodeDialog(QDialog):
             ProfileGCodeDialog {
                 background-color: #282a36;
                 color: #ffffff;
-            }
-            ProfileGCodeDialog QLabel {
-                color: #ffffff;
-                background-color: transparent;
-            }
-            ProfileGCodeDialog QPushButton {
-                background-color: #1d1f28;
-                color: #BB86FC;
-                border: 2px solid #BB86FC;
-                border-radius: 4px;
-                padding: 6px 12px;
-                min-width: 80px;
-            }
-            ProfileGCodeDialog QPushButton:hover {
-                background-color: #000000;
-                color: #9965DA;
-                border: 2px solid #9965DA;
-            }
-            ProfileGCodeDialog QPushButton:pressed {
-                background-color: #BB86FC;
-                color: #1d1f28;
             }
             QDialogButtonBox QPushButton {
                 background-color: #1d1f28;

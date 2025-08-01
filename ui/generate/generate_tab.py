@@ -1,19 +1,28 @@
-from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
-                             QLabel, QGroupBox, QLineEdit, QFileDialog, QMessageBox,
-                             QScrollArea, QGridLayout, QFrame, QSplitter)
+"""
+Generate Tab
+
+Complete file generation tab with dual content tracking and proper export.
+Now simplified using extracted widgets.
+"""
+
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QGridLayout, QFileDialog, QMessageBox
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QFont
-from .widgets.generated_file_item import GeneratedFileItem
 import os
 import shutil
+
+from ..widgets.themed_widgets import (ThemedSplitter, ThemedLabel, ThemedLineEdit, ThemedGroupBox,
+                                    PurpleButton, GreenButton, OrangeButton)
+from .widgets.generated_file_item import GeneratedFileItem
+
 
 class GenerateTab(QWidget):
     """Complete file generation tab with dual content tracking and proper export"""
     back_clicked = Signal()
     generate_clicked = Signal()
     
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self.generator = None  # Will be set from main window
         self.output_dir = os.path.expanduser("~/CNC/Output")
         self.dollar_variables_info = {}  # Store $ variables info
@@ -35,81 +44,6 @@ class GenerateTab(QWidget):
                 background-color: #282a36;
                 color: #ffffff;
             }
-            QGroupBox {
-                border: 2px solid #44475c;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-                color: #ffffff;
-                font-weight: bold;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
-            }
-            QLabel {
-                color: #ffffff;
-                background-color: transparent;
-            }
-            QLineEdit {
-                background-color: #1d1f28;
-                color: #ffffff;
-                border: 1px solid #6f779a;
-                border-radius: 4px;
-                padding: 4px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #BB86FC;
-            }
-            QPushButton {
-                background-color: #1d1f28;
-                color: #BB86FC;
-                border: 2px solid #BB86FC;
-                border-radius: 4px;
-                padding: 6px 12px;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #000000;
-                color: #9965DA;
-                border: 2px solid #9965DA;
-            }
-            QPushButton:pressed {
-                background-color: #BB86FC;
-                color: #1d1f28;
-            }
-            QPushButton#generate_button {
-                color: #23c87b;
-                border: 2px solid #23c87b;
-            }
-            QPushButton#generate_button:hover {
-                color: #1a945b;
-                border: 2px solid #1a945b;
-            }
-            QPushButton#generate_button:pressed {
-                background-color: #23c87b;
-                color: #1d1f28;
-            }
-            QPushButton#export_button {
-                color: #ff8c00;
-                border: 2px solid #ff8c00;
-            }
-            QPushButton#export_button:hover {
-                color: #e67300;
-                border: 2px solid #e67300;
-            }
-            QPushButton#export_button:pressed {
-                background-color: #ff8c00;
-                color: #1d1f28;
-            }
-            QSplitter::handle {
-                background-color: #44475c;
-                width: 4px;
-            }
-            QSplitter::handle:hover {
-                background-color: #BB86FC;
-            }
         """)
     
     def setup_ui(self):
@@ -122,20 +56,19 @@ class GenerateTab(QWidget):
         main_layout.addLayout(toolbar_layout)
         
         # Title
-        title_label = QLabel("Generated G-Code Files")
+        title_label = ThemedLabel("Generated G-Code Files")
         title_label.setFont(QFont("Arial", 14, QFont.Bold))
         toolbar_layout.addWidget(title_label)
         
         toolbar_layout.addStretch()
         
         # Generate button
-        self.generate_button = QPushButton("Generate Files")
-        self.generate_button.setObjectName("generate_button")
+        self.generate_button = GreenButton("Generate Files")
         self.generate_button.clicked.connect(self.on_generate_clicked)
         toolbar_layout.addWidget(self.generate_button)
         
         # Main content area with splitter
-        content_splitter = QSplitter(Qt.Horizontal)
+        content_splitter = ThemedSplitter(Qt.Horizontal)
         main_layout.addWidget(content_splitter, 1)
         
         # Left side files
@@ -153,18 +86,17 @@ class GenerateTab(QWidget):
         output_layout = QHBoxLayout()
         main_layout.addLayout(output_layout)
         
-        output_layout.addWidget(QLabel("Output Directory:"))
-        self.output_path = QLineEdit(self.output_dir)
+        output_layout.addWidget(ThemedLabel("Output Directory:"))
+        self.output_path = ThemedLineEdit(self.output_dir)
         self.output_path.setReadOnly(True)
         output_layout.addWidget(self.output_path)
         
-        browse_button = QPushButton("Browse")
+        browse_button = PurpleButton("Browse")
         browse_button.clicked.connect(self.browse_output_dir)
         output_layout.addWidget(browse_button)
         
         # Export button next to browse
-        self.export_button = QPushButton("Export Files")
-        self.export_button.setObjectName("export_button")
+        self.export_button = OrangeButton("Export Files")
         self.export_button.clicked.connect(self.export_files)
         output_layout.addWidget(self.export_button)
         
@@ -174,7 +106,7 @@ class GenerateTab(QWidget):
         
         nav_layout.addStretch()
         
-        back_button = QPushButton("← Back")
+        back_button = PurpleButton("← Back")
         back_button.clicked.connect(self.back_clicked)
         nav_layout.addWidget(back_button)
     
@@ -184,7 +116,7 @@ class GenerateTab(QWidget):
         layout = QVBoxLayout(widget)
         
         # Group box
-        group = QGroupBox(title)
+        group = ThemedGroupBox(title)
         group_layout = QVBoxLayout(group)
         layout.addWidget(group)
         

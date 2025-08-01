@@ -1,7 +1,14 @@
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
-                             QTextEdit, QLabel, QSplitter)
+"""
+Preview Dialog
+
+Dialog for previewing G-code files.
+"""
+
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QTextEdit
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QTextOption
+
+from ..widgets.themed_widgets import ThemedSplitter, ThemedLabel, PurpleButton
 
 
 class PreviewDialog(QDialog):
@@ -13,11 +20,25 @@ class PreviewDialog(QDialog):
         self.setModal(True)
         self.resize(900, 600)
         
+        # Apply styling
+        self.setStyleSheet("""
+            PreviewDialog {
+                background-color: #282a36;
+                color: #ffffff;
+            }
+            QTextEdit {
+                background-color: #1d1f28;
+                color: #ffffff;
+                border: 1px solid #6f779a;
+                border-radius: 4px;
+            }
+        """)
+        
         # Main layout
         layout = QVBoxLayout(self)
         
         # Create splitter for side-by-side view
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = ThemedSplitter(Qt.Horizontal)
         layout.addWidget(splitter)
         
         # Left side - G-code
@@ -29,7 +50,7 @@ class PreviewDialog(QDialog):
         splitter.addWidget(gcode_widget)
         
         # Right side - Toolpath preview
-        preview_widget = QLabel()
+        preview_widget = ThemedLabel()
         preview_widget.setMinimumWidth(400)
         preview_widget.setStyleSheet("QLabel { background-color: #333; border: 1px solid #666; }")
         preview_widget.setAlignment(Qt.AlignCenter)
@@ -46,17 +67,17 @@ class PreviewDialog(QDialog):
         button_layout.addStretch()
         
         # View controls (placeholder)
-        reset_button = QPushButton("Reset View")
+        reset_button = PurpleButton("Reset View")
         reset_button.setEnabled(False)  # Disabled for now
         button_layout.addWidget(reset_button)
         
-        zoom_button = QPushButton("Zoom")
+        zoom_button = PurpleButton("Zoom")
         zoom_button.setEnabled(False)  # Disabled for now
         button_layout.addWidget(zoom_button)
         
         button_layout.addStretch()
         
         # Close button
-        close_button = QPushButton("Close")
+        close_button = PurpleButton("Close")
         close_button.clicked.connect(self.accept)
         button_layout.addWidget(close_button)
