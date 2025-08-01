@@ -300,3 +300,6 @@ class GenerateTab(QWidget):
         """Set frame configuration data (called from main window)"""
         # This will be used when connecting to the generator
         pass
+    
+    def set_main_window(self, main_window):
+        pass

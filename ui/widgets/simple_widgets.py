@@ -5,9 +5,9 @@ Basic functional widgets that don't need their own files.
 These are utility widgets used across the application.
 """
 
-from PySide6.QtWidgets import QLabel, QLineEdit
+from PySide6.QtWidgets import QLabel, QLineEdit, QSizePolicy
 from PySide6.QtCore import Signal, Qt, QSize
-from PySide6.QtGui import QPixmap, QPainter, QColor, QSizePolicy
+from PySide6.QtGui import QPixmap, QPainter, QColor
 from .themed_widgets import ThemedLineEdit
 
 

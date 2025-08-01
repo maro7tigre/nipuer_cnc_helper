@@ -392,3 +392,6 @@ class ProfileTab(QWidget):
     def get_frame_gcode_data(self):
         """Get frame G-code data"""
         return self._frame_gcode_data
+    
+    def set_main_window(self, main_window):
+        pass

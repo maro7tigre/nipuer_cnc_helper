@@ -803,3 +803,7 @@ class FrameTab(QWidget):
         
         # Update configuration to trigger generator update
         self.on_config_changed()
+        
+        
+    def set_main_window(self, main_window):
+        pass
