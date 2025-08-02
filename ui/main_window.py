@@ -213,11 +213,25 @@ class MainWindow(QMainWindow):
     
     def on_profiles_updated(self):
         """Handle profiles updated event - triggered when profiles/types/sets change"""
-        # Process gcodes when profiles change
+        
+        # Re-extract gcodes from selected profiles in case they changed
+        selected_hinge = self.dollar_variables.get("selected_hinge")
+        selected_lock = self.dollar_variables.get("selected_lock")
+        
+        if selected_hinge:
+            hinge_gcode = self.get_hinge_profile_gcode(selected_hinge)
+            self.current_gcodes["hinge_gcode"] = hinge_gcode
+        
+        if selected_lock:
+            lock_gcode = self.get_lock_profile_gcode(selected_lock)
+            self.current_gcodes["lock_gcode"] = lock_gcode
+        
+        # Process gcodes with current variables
         self.process_gcodes()
+        
         # Auto-save current profile set
         self.save_profile_set(current=True)
-        print("Profiles updated - gcodes processed and saved")
+        print("Profiles updated - gcodes re-extracted, processed and saved")
     
     def on_variables_updated(self):
         """Handle variables updated event - triggered when $variables change"""
@@ -241,17 +255,19 @@ class MainWindow(QMainWindow):
             
             # Enable generate tab if frame is configured
             # Check if basic frame variables are set
+            #NOTE: this is just a placeholder
             frame_configured = (
                 self.dollar_variables.get("frame_height") and 
                 self.dollar_variables.get("frame_width")
             )
+            
             if frame_configured:
                 self.tabs.setTabEnabled(2, True)
         else:
             self.tabs.setTabEnabled(1, False)
             self.tabs.setTabEnabled(2, False)
     
-    # MARK: - Profile Updates (Type 1)
+    # MARK: - Profile Updates
     
     def update_hinge_type(self, name: str, data: Dict[str, Any] = None):
         """Update hinge type (delete if data is None)"""
@@ -287,11 +303,8 @@ class MainWindow(QMainWindow):
     
     def update_frame_gcode(self, right_gcode: str = None, left_gcode: str = None):
         """Update frame gcodes"""
-        if right_gcode is not None:
-            self.current_gcodes["right_gcode"] = right_gcode
-        if left_gcode is not None:
-            self.current_gcodes["left_gcode"] = left_gcode
-        self.events.emit_profiles_updated()
+        self.update_current_gcodes("right_gcode", right_gcode)
+        self.update_current_gcodes("left_gcode", left_gcode)
     
     def select_profiles(self, hinge_profile: str, lock_profile: str):
         """Select hinge and lock profiles"""
@@ -303,14 +316,10 @@ class MainWindow(QMainWindow):
         hinge_gcode = self.get_hinge_profile_gcode(hinge_profile)
         lock_gcode = self.get_lock_profile_gcode(lock_profile)
         
-        if hinge_gcode:
-            self.current_gcodes["hinge_gcode"] = hinge_gcode
-        if lock_gcode:
-            self.current_gcodes["lock_gcode"] = lock_gcode
-        
-        self.events.emit_profiles_updated()
+        self.update_current_gcodes("hinge_gcode", hinge_gcode)
+        self.update_current_gcodes("lock_gcode", lock_gcode)
     
-    # MARK: - Variable Updates (Type 2)
+    # MARK: - Variable Updates
     
     def update_dollar_variable(self, name: str, value: Any):
         """Update single $variable"""
@@ -325,20 +334,7 @@ class MainWindow(QMainWindow):
                 self.dollar_variables[name] = value
         self.events.emit_variables_updated()
     
-    # MARK: - Generated Updates (Type 3)
-    
-    def update_generated_gcode(self, name: str, gcode: str):
-        """Update single generated gcode"""
-        if name in self.generated_gcodes:
-            self.generated_gcodes[name] = gcode
-            self.events.emit_generated_updated()
-    
-    def copy_to_generated(self):
-        """Copy processed gcodes to generated"""
-        self.generated_gcodes = self.processed_gcodes.copy()
-        self.events.emit_generated_updated()
-    
-    # MARK: - Profile Set Management
+    # MARK: - Profile Set
     
     def save_profile_set(self, current: bool = False):
         """Save current profile set"""
@@ -496,6 +492,12 @@ class MainWindow(QMainWindow):
     
     # MARK: - Gcode Processing
     
+    def update_current_gcodes(self, name: str, gcode: str):
+        """Update current gcode by name"""
+        if name in self.current_gcodes:
+            self.current_gcodes[name] = gcode
+            self.events.emit_profiles_updated()
+    
     def process_gcodes(self):
         """Process current gcodes with $variables"""
         for name, gcode in self.current_gcodes.items():
@@ -504,6 +506,34 @@ class MainWindow(QMainWindow):
                 self.processed_gcodes[name] = processed
             else:
                 self.processed_gcodes[name] = None
+                
+    def update_generated_gcode(self, name: str, gcode: str):
+        """Update single generated gcode"""
+        if name in self.generated_gcodes:
+            self.generated_gcodes[name] = gcode
+            self.events.emit_generated_updated()
+    
+    def copy_to_generated(self):
+        """Copy processed gcodes to generated"""
+        self.generated_gcodes = self.processed_gcodes.copy()
+        self.events.emit_generated_updated()
+        
+
+    def check_processed_vs_generated(self) -> Dict[str, bool]:
+        """Check if processed gcodes match generated gcodes"""
+        comparison = {}
+        
+        for gcode_name in self.current_gcodes.keys():
+            processed = self.processed_gcodes.get(gcode_name, "")
+            generated = self.generated_gcodes.get(gcode_name, "")
+            
+            # Handle None values
+            processed = processed or ""
+            generated = generated or ""
+            
+            comparison[gcode_name] = (processed == generated)
+        
+        return comparison
     
     def replace_dollar_variables(self, gcode: str) -> str:
         """Replace $variables in gcode with actual values"""
