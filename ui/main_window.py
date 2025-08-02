@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget, QInputDialog, QMessageBox, QFileDialog
 from PySide6.QtCore import Qt, QSettings
 from .profile.profile_tab import ProfileTab
 from .frame.frame_tab import FrameTab
@@ -6,6 +6,7 @@ from .generate.generate_tab import GenerateTab
 import json
 import os
 import re
+import shutil
 from datetime import datetime
 
 
@@ -62,12 +63,25 @@ class MainWindow(QMainWindow):
         # Initialize settings
         self.settings = QSettings("CNCFrameWizard", "AppConfig")
         
+        self.default_config_init()
+        
         # Setup UI
         self.setup_ui()
         
         # Load configurations
         self.load_app_config()
         self.load_profile_set()
+        
+    def default_config_init(self):
+        """ Initialize default configurations if not set """
+        self.profiles_dir = "profiles"
+        self.current_file = os.path.join(self.profiles_dir, "current.json")
+        self.saved_dir = os.path.join(self.profiles_dir, "saved")
+        self.projects_dir = "projects" 
+        
+        # Ensure directories exist
+        os.makedirs(self.saved_dir, exist_ok=True)
+        os.makedirs(self.projects_dir, exist_ok=True)
     
     def setup_ui(self):
         """Setup user interface"""
@@ -80,9 +94,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.tabs)
         
         # Create tabs
-        self.profile_tab = ProfileTab()
-        self.frame_tab = FrameTab()
-        self.generate_tab = GenerateTab()
+        self.profile_tab = ProfileTab(self)
+        self.frame_tab = FrameTab(self)
+        self.generate_tab = GenerateTab(self)
         
         # Add tabs
         self.tabs.addTab(self.profile_tab, "Profile Selection")
@@ -102,17 +116,19 @@ class MainWindow(QMainWindow):
         else:
             self.show()
     
+    # MARK: - Signals connecting
     def connect_signals(self):
         """Connect tab signals"""
-        # Set main window references for all tabs
-        self.profile_tab.set_main_window(self)
-        self.frame_tab.set_main_window(self)
-        self.generate_tab.set_main_window(self)
         
         # Profile tab signals
         self.profile_tab.profiles_selected.connect(self.on_profiles_selected)
         self.profile_tab.profiles_modified.connect(self.on_profiles_modified)
         self.profile_tab.next_clicked.connect(lambda: self.tabs.setCurrentIndex(1))
+        
+        self.profile_tab.save_project_button.clicked.connect(self.save_project)
+        self.profile_tab.load_project_button.clicked.connect(self.load_project)
+        self.profile_tab.save_button.clicked.connect(self.save_profile_set())
+        self.profile_tab.load_button.clicked.connect(self.load_profile_set)
         
         # Frame tab signals
         self.frame_tab.back_clicked.connect(lambda: self.tabs.setCurrentIndex(0))
@@ -129,7 +145,7 @@ class MainWindow(QMainWindow):
         self.save_app_config()
         event.accept()
     
-    # MARK: - App Config Methods
+    # MARK: - App Config
     def save_app_config(self):
         """Save application configuration"""
         try:
@@ -176,40 +192,61 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Error loading app config: {str(e)}")
     
-    # MARK: - Profile Set Methods
+    # MARK: - Profile Set
     # TODO: add a parameter for when the user save or load a profile set while if none just save and load profiles/current.json
-    def save_profile_set(self):
+    def save_profile_set(self, current=False):
         """Save current profile set to current.json"""
-        try:
-            os.makedirs("profiles", exist_ok=True)
-            data = {
-                "hinges": {
-                    "types": self.hinges_types,
-                    "profiles": self.hinges_profiles
-                },
-                "locks": {
-                    "types": self.locks_types,
-                    "profiles": self.locks_profiles
-                },
-                "frame_gcode": {
-                    "right_gcode": self.current_gcodes["right_gcode"],
-                    "left_gcode": self.current_gcodes["left_gcode"]
-                }
-            }
-            
-            with open("profiles/current.json", 'w') as f:
-                json.dump(data, f, indent=2)
-            #TODO: if hinge or lock is selected, update current_gcodes with selected profiles
-        except Exception as e:
-            print(f"Error saving profile set: {str(e)}")
-    
-    def load_profile_set(self):
-        """Load profile set from current.json"""
-        try:
-            if os.path.exists("profiles/current.json"):
-                with open("profiles/current.json", 'r') as f:
-                    data = json.load(f)
+        if current:
+            filename = self.current_file
+        else:
+            # Default filename with date
+            default_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S.json")
+
+            filename, _ = QFileDialog.getSaveFileName(
+                self, "Save Profile Set", 
+                os.path.join(self.saved_dir, default_name),
+                "JSON Files (*.json)"
+            )
+        if filename:
+            try:
+                # Ensure directory exists
+                os.makedirs(os.path.dirname(filename), exist_ok=True)
                 
+                data = {
+                    "hinges": {
+                        "types": self.hinges_types,
+                        "profiles": self.hinges_profiles
+                    },
+                    "locks": {
+                        "types": self.locks_types,
+                        "profiles": self.locks_profiles
+                    },
+                    "frame_gcode": {
+                        "right_gcode": self.current_gcodes["right_gcode"],
+                        "left_gcode": self.current_gcodes["left_gcode"]
+                    }
+                }
+                
+                with open(filename, 'w') as f:
+                    json.dump(data, f, indent=2)
+                QMessageBox.information(self, "Success", "Profile set saved successfully!")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to save profile set: {str(e)}")
+    
+    def load_profile_set(self, current=False):
+        """Load profile set from current.json"""
+        if current:
+            filename = self.current_file
+        else:
+            filename, _ = QFileDialog.getOpenFileName(
+                self, "Load Profile Set", 
+                self.saved_dir,
+                "JSON Files (*.json)"
+            )
+        if filename:
+            try:
+                with open(filename, 'r') as f:
+                    data = json.load(f)
                 # Load types and profiles
                 if "hinges" in data:
                     self.hinges_types = data["hinges"].get("types", {})
@@ -217,20 +254,35 @@ class MainWindow(QMainWindow):
                 if "locks" in data:
                     self.locks_types = data["locks"].get("types", {})
                     self.locks_profiles = data["locks"].get("profiles", {})
-                
                 # Load frame gcodes
                 if "frame_gcode" in data:
                     self.current_gcodes["right_gcode"] = data["frame_gcode"].get("right_gcode")
                     self.current_gcodes["left_gcode"] = data["frame_gcode"].get("left_gcode")
-        except Exception as e:
-            print(f"Error loading profile set: {str(e)}")
+            except Exception as e:
+                print(f"Error loading profile set: {str(e)}")
     
-    # MARK: - Project File Methods
-    def save_project(self, project_name):
+    # MARK: - Project File
+    def save_project(self):
         """Save project with $variables and generated gcodes"""
+        project_name, ok = QInputDialog.getText(self, "Save Project", "Enter project name:")
+        
+        if not ok or not project_name.strip():
+            return
+
+        project_name = project_name.strip()
+        project_dir = os.path.join(self.projects_dir, project_name)
+
+        if os.path.exists(project_dir):
+            reply = QMessageBox.question(self, "Project Exists", 
+                                       f"Project '{project_name}' already exists. Overwrite?",
+                                       QMessageBox.Yes | QMessageBox.No)
+            if reply != QMessageBox.Yes:
+                return
+            
+            # Remove existing project directory
+            shutil.rmtree(project_dir)
+        
         try:
-            os.makedirs("projects", exist_ok=True)
-            project_dir = os.path.join("projects", project_name)
             os.makedirs(project_dir, exist_ok=True)
             
             data = {
@@ -246,27 +298,38 @@ class MainWindow(QMainWindow):
             print(f"Error saving project: {str(e)}")
             return False
     
-    def load_project(self, project_path):
-        """Load project from project.json"""
-        try:
-            project_file = os.path.join(project_path, "project.json")
-            if os.path.exists(project_file):
-                with open(project_file, 'r') as f:
+    def load_project(self):
+        """Load complete project"""
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Load Project", 
+            self.projects_dir,
+            "JSON Files (*.json)"
+        )
+        
+        if filename:
+            try:
+                with open(filename, 'r') as f:
                     data = json.load(f)
-                
+        
+
                 # Load $variables and generated gcodes
                 if "dollar_variables" in data:
                     self.dollar_variables.update(data["dollar_variables"])
                 if "generated_gcodes" in data:
                     self.generated_gcodes = data["generated_gcodes"]
                     
+                
                 #TODO: if profiles are selected enable second and if all frame tab configuration are valid enable third tab
+                QMessageBox.information(self, "Success", "Profile set loaded successfully!")
+                
                 return True
-        except Exception as e:
-            print(f"Error loading project: {str(e)}")
-        return False
+        
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to load profile set: {str(e)}")
+            return False
     
-    # MARK: - Update Variables Methods
+    
+    # MARK: - Update Variables
     def update_hinge_type(self, name, data=None):
         """Update hinge type (delete if data is None)"""
         if data is None:
@@ -326,7 +389,7 @@ class MainWindow(QMainWindow):
         self.dollar_variables[name] = value
         self.process_gcodes()
     
-    # MARK: - Get Variables Methods 
+    # MARK: - Get Variables 
     def get_hinge_type(self, name):
         """Get hinge type data"""
         return self.hinges_types.get(name)
@@ -372,7 +435,7 @@ class MainWindow(QMainWindow):
         else:
             return "" # Return empty string if variable not found
     
-    # MARK: - Helper Methods
+    # MARK: - Helper
     def replace_dollar_variables(self, gcode):
         """Replace $variables in gcode with actual values"""
         if not gcode:

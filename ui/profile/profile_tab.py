@@ -24,31 +24,17 @@ class ProfileTab(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.selected_hinge = None
-        self.selected_lock = None
-        self.profiles_dir = "profiles"
-        self.current_file = os.path.join(self.profiles_dir, "current.json")
-        self.saved_dir = os.path.join(self.profiles_dir, "saved")
-        self.projects_dir = "projects"  # New projects directory
-        self._frame_gcode_data = {'gcode_right': '', 'gcode_left': ''}  # Initialize frame G-code data
-        self.dollar_variables_info = {}  # Store $ variables info
-        
-        # Ensure directories exist
-        os.makedirs(self.saved_dir, exist_ok=True)
-        os.makedirs(self.projects_dir, exist_ok=True)
-        
+        self.main_window = parent
+        self.selected_hinge = None # ?
+        self.selected_lock = None # ?
+
+
         self.setup_ui()
         self.apply_styling()
         self.connect_signals()
         self.load_current_profiles()
     
-    def set_dollar_variables_info(self, dollar_variables_info):
-        """Set available $ variables information"""
-        self.dollar_variables_info = dollar_variables_info
-        self.hinge_grid.set_dollar_variables_info(dollar_variables_info)
-        self.lock_grid.set_dollar_variables_info(dollar_variables_info)
-    
-    def apply_styling(self):
+    def apply_styling(self): # TODO: Move to theme manager
         """Apply dark theme styling"""
         self.setStyleSheet("""
             ProfileTab {
@@ -69,22 +55,18 @@ class ProfileTab(QWidget):
         
         # Project buttons (blue)
         self.save_project_button = BlueButton("Save Project")
-        self.save_project_button.clicked.connect(self.save_project)
         toolbar_layout.addWidget(self.save_project_button)
         
         self.load_project_button = BlueButton("Load Project")
-        self.load_project_button.clicked.connect(self.load_project)
         toolbar_layout.addWidget(self.load_project_button)
         
         toolbar_layout.addSpacing(20)
         
         # Profile set buttons (purple)
         self.save_button = PurpleButton("Save Set")
-        self.save_button.clicked.connect(self.save_profile_set)
         toolbar_layout.addWidget(self.save_button)
         
         self.load_button = PurpleButton("Load Set")
-        self.load_button.clicked.connect(self.load_profile_set)
         toolbar_layout.addWidget(self.load_button)
         
         toolbar_layout.addStretch()
@@ -240,149 +222,6 @@ class ProfileTab(QWidget):
         }
         
         return data
-    
-    def save_profile_set(self):
-        """Save current profile set to file"""
-        # Default filename with date
-        default_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S.json")
-        
-        filename, _ = QFileDialog.getSaveFileName(
-            self, "Save Profile Set", 
-            os.path.join(self.saved_dir, default_name),
-            "JSON Files (*.json)"
-        )
-        
-        if filename:
-            data = self.get_current_data()
-            
-            try:
-                with open(filename, 'w') as f:
-                    json.dump(data, f, indent=2)
-                QMessageBox.information(self, "Success", "Profile set saved successfully!")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to save profile set: {str(e)}")
-    
-    def load_profile_set(self):
-        """Load profile set from file"""
-        filename, _ = QFileDialog.getOpenFileName(
-            self, "Load Profile Set", 
-            self.saved_dir,
-            "JSON Files (*.json)"
-        )
-        
-        if filename:
-            try:
-                with open(filename, 'r') as f:
-                    data = json.load(f)
-                
-                self.load_profile_data(data)
-                self.save_current_profiles()  # Update current.json
-                
-                QMessageBox.information(self, "Success", "Profile set loaded successfully!")
-                
-                # Emit profiles modified signal to trigger border updates
-                self.profiles_modified.emit()
-                
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to load profile set: {str(e)}")
-    
-    def save_project(self):
-        """Save complete project with selected profiles and frame config"""
-        project_name, ok = QInputDialog.getText(self, "Save Project", "Enter project name:")
-        if not ok or not project_name.strip():
-            return
-        
-        project_name = project_name.strip()
-        project_dir = os.path.join(self.projects_dir, project_name)
-        
-        if os.path.exists(project_dir):
-            reply = QMessageBox.question(self, "Project Exists", 
-                                       f"Project '{project_name}' already exists. Overwrite?",
-                                       QMessageBox.Yes | QMessageBox.No)
-            if reply != QMessageBox.Yes:
-                return
-            
-            # Remove existing project directory
-            shutil.rmtree(project_dir)
-        
-        try:
-            os.makedirs(project_dir, exist_ok=True)
-            
-            # Save config.json with selected profiles and frame data
-            config_data = {
-                "selected_hinge": self.selected_hinge,
-                "selected_lock": self.selected_lock,
-                "profiles": self.get_current_data(),
-                "timestamp": datetime.now().isoformat()
-            }
-            
-            config_file = os.path.join(project_dir, "config.json")
-            with open(config_file, 'w') as f:
-                json.dump(config_data, f, indent=2)
-            
-            QMessageBox.information(self, "Success", f"Project '{project_name}' saved successfully!")
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save project: {str(e)}")
-    
-    def load_project(self):
-        """Load complete project"""
-        project_name = QFileDialog.getExistingDirectory(
-            self, "Select Project Directory", self.projects_dir
-        )
-        
-        if not project_name:
-            return
-        
-        config_file = os.path.join(project_name, "config.json")
-        if not os.path.exists(config_file):
-            QMessageBox.critical(self, "Error", "Invalid project: config.json not found.")
-            return
-        
-        try:
-            with open(config_file, 'r') as f:
-                config_data = json.load(f)
-            
-            # Load profile data
-            profiles_data = config_data.get("profiles", {})
-            self.load_profile_data(profiles_data)
-            
-            # Restore selections
-            selected_hinge = config_data.get("selected_hinge")
-            selected_lock = config_data.get("selected_lock")
-            
-            if selected_hinge:
-                self.hinge_grid.on_item_clicked(selected_hinge)
-            if selected_lock:
-                self.lock_grid.on_item_clicked(selected_lock)
-            
-            # Save to current.json
-            self.save_current_profiles()
-            
-            project_name_only = os.path.basename(project_name)
-            QMessageBox.information(self, "Success", f"Project '{project_name_only}' loaded successfully!")
-            
-            # Emit profiles modified signal
-            self.profiles_modified.emit()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to load project: {str(e)}")
-    
-    def load_profile_data(self, data):
-        """Load profile data into UI"""
-        # Load types
-        if "hinges" in data:
-            hinge_types = data["hinges"].get("types", {})
-            self.hinge_grid.set_types_data(hinge_types)
-            self.hinge_grid.load_profiles_data(data["hinges"].get("profiles", {}))
-        
-        if "locks" in data:
-            lock_types = data["locks"].get("types", {})
-            self.lock_grid.set_types_data(lock_types)
-            self.lock_grid.load_profiles_data(data["locks"].get("profiles", {}))
-        
-        # Load frame G-code data
-        self._frame_gcode_data = data.get("frame_gcode", {'gcode_right': '', 'gcode_left': ''})
     
     def save_frame_gcode_data(self, frame_gcode_data):
         """Save frame G-code data"""
