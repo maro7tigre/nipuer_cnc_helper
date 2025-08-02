@@ -1,31 +1,31 @@
 """
 Profile Editor Dialog
 
-Main profile editor dialog with validation and $ variables support.
+Simplified profile editor that works with centralized main_window data management.
 """
 
-from PySide6.QtWidgets import QDialog, QWidget, QHBoxLayout, QVBoxLayout, QDialogButtonBox, QFileDialog, QMessageBox
+from PySide6.QtWidgets import QDialog, QWidget, QHBoxLayout, QVBoxLayout, QDialogButtonBox, QMessageBox
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 import os
 
 from ..widgets.themed_widgets import ThemedLabel, ThemedLineEdit, ThemedSplitter
-from ..widgets.simple_widgets import ClickableImageLabel, ScaledImageLabel, PlaceholderPixmap
+from ..widgets.simple_widgets import ClickableImageLabel, PlaceholderPixmap
 from ..profile.widgets.type_selector import TypeSelector
 from ..widgets.variable_editor import VariableEditor
 from ..widgets.custom_editor import CustomEditor
 
 
 class ProfileEditor(QDialog):
-    """Main profile editor dialog with validation and $ variables support"""
+    """Simplified profile editor that integrates with main_window data management"""
     
-    def __init__(self, profile_type, profile_data=None, parent=None, dollar_variables_info=None):
+    def __init__(self, profile_type, profile_data=None, parent=None):
         super().__init__(parent)
         self.profile_type = profile_type  # "hinge" or "lock"
         self.profile_data = profile_data or {}
+        self.main_window = parent.main_window if hasattr(parent, 'main_window') else parent
         self.current_type = None
         self.profile_image_path = profile_data.get("image") if profile_data else None
-        self.dollar_variables_info = dollar_variables_info or {}
         
         self.setWindowTitle(f"{'Edit' if profile_data else 'New'} {profile_type.capitalize()} Profile")
         self.setModal(True)
@@ -53,9 +53,11 @@ class ProfileEditor(QDialog):
         """Setup UI components"""
         layout = QVBoxLayout(self)
         
-        # Type selector
-        self.type_selector = TypeSelector(self.profile_type, self.dollar_variables_info)
+        # Type selector - gets data from main_window
+        dollar_vars = self.main_window.get_dollar_variable()
+        self.type_selector = TypeSelector(self.profile_type, dollar_vars)
         self.type_selector.type_selected.connect(self.on_type_selected)
+        self.type_selector.types_modified.connect(self.on_types_modified)
         layout.addWidget(self.type_selector)
         
         # Main content area with resizable splitter
@@ -63,7 +65,7 @@ class ProfileEditor(QDialog):
         content_layout = QHBoxLayout(content_widget)
         layout.addWidget(content_widget, 1)
         
-        # Splitter - now resizable by user
+        # Splitter - resizable by user
         splitter = ThemedSplitter(Qt.Horizontal)
         content_layout.addWidget(splitter)
         
@@ -84,17 +86,13 @@ class ProfileEditor(QDialog):
         left_layout.addStretch()
         splitter.addWidget(left_widget)
         
-        # Middle side - Type preview
+        # Middle - Type preview
         middle_widget = QWidget()
         middle_layout = QVBoxLayout(middle_widget)
         
-        # Type preview
         middle_layout.addWidget(ThemedLabel("Type Preview:"))
-        # Use ScaledImageLabel for preview to expand and maintain aspect ratio
-        self.preview_image_label = ScaledImageLabel()
-        self.preview_image_label.setAlignment(Qt.AlignCenter)
+        self.preview_image_label = ClickableImageLabel((200, 200))
         self.preview_image_label.setText("Select a type to see preview")
-        self.preview_image_label.setMinimumHeight(200)
         self.preview_image_label.setStyleSheet("""
             QLabel {
                 background-color: #44475c;
@@ -107,7 +105,7 @@ class ProfileEditor(QDialog):
         
         splitter.addWidget(middle_widget)
         
-        # Right side - Profile info
+        # Right - Profile info
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         
@@ -128,7 +126,7 @@ class ProfileEditor(QDialog):
         right_layout.addStretch()
         splitter.addWidget(right_widget)
 
-        # Set initial splitter sizes - user can adjust these
+        # Set initial splitter sizes
         splitter.setSizes([300, 400, 300])
         
         # Dialog buttons
@@ -176,7 +174,16 @@ class ProfileEditor(QDialog):
         super().accept()
     
     def load_data(self):
-        """Load existing profile data"""
+        """Load existing profile data and types from main_window"""
+        # Load types from main_window
+        if self.profile_type == "hinge":
+            types_data = self.main_window.hinges_types
+        else:
+            types_data = self.main_window.locks_types
+        
+        self.type_selector.load_types(types_data)
+        
+        # Load profile data
         if self.profile_data:
             self.profile_name_edit.setText(self.profile_data.get("name", ""))
             
@@ -184,17 +191,20 @@ class ProfileEditor(QDialog):
                 pixmap = QPixmap(self.profile_image_path)
                 if not pixmap.isNull():
                     self.profile_image_label.setPixmap(pixmap.scaled(150, 150, Qt.KeepAspectRatio))
+            
+            # Select type if profile has one
+            if self.profile_data.get("type"):
+                self.type_selector.on_type_clicked(self.profile_data["type"])
     
-    def load_types(self, types_data):
-        """Load types into selector"""
-        self.type_selector.load_types(types_data)
-        
-        # Select type if profile has one
-        if self.profile_data.get("type"):
-            for type_name, type_data in types_data.items():
-                if type_name == self.profile_data["type"]:
-                    self.type_selector.on_type_clicked(type_name)
-                    break
+    def on_types_modified(self):
+        """Handle when types are modified in the selector"""
+        # Update main_window with new types
+        types_data = self.type_selector.get_types_data()
+        for type_name, type_data in types_data.items():
+            if self.profile_type == "hinge":
+                self.main_window.update_hinge_type(type_name, type_data)
+            else:
+                self.main_window.update_lock_type(type_name, type_data)
     
     def get_profile_data(self):
         """Get profile data from dialog"""
@@ -206,7 +216,6 @@ class ProfileEditor(QDialog):
             "image": self.profile_image_path
         }
         
-        print(f"Profile data created: {data}")
         return data
     
     def on_type_selected(self, type_data):
@@ -225,11 +234,11 @@ class ProfileEditor(QDialog):
             if self.profile_data.get("custom_variables"):
                 self.custom_editor.set_custom_values(self.profile_data["custom_variables"])
         
-        # Update preview with scaling that expands to fill space
+        # Update preview
         if type_data.get("preview"):
             pixmap = QPixmap(type_data["preview"])
             if not pixmap.isNull():
-                self.preview_image_label.setPixmap(pixmap)
+                self.preview_image_label.setPixmap(pixmap.scaled(200, 200, Qt.KeepAspectRatio))
             else:
                 self.preview_image_label.setText("No preview available")
         else:
@@ -237,6 +246,8 @@ class ProfileEditor(QDialog):
     
     def select_profile_image(self):
         """Select profile image"""
+        from PySide6.QtWidgets import QFileDialog
+        
         default_dir = os.path.join("profiles", "images")
         os.makedirs(default_dir, exist_ok=True)
         

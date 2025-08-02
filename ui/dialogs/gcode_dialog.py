@@ -1,7 +1,7 @@
 """
 Profile GCode Dialog
 
-Enhanced G-code editor dialog for profiles with $ variables support.
+Simplified G-code editor dialog that gets $ variables from main_window.
 """
 
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QDialogButtonBox, QFileDialog, QMessageBox
@@ -13,13 +13,13 @@ from ..gcode_ide import GCodeEditor
 
 
 class ProfileGCodeDialog(QDialog):
-    """Enhanced G-code editor dialog for profiles with $ variables support"""
+    """Simplified G-code editor dialog with $ variables support from main_window"""
     
-    def __init__(self, profile_name, gcode_content="", parent=None, dollar_variables_info=None):
+    def __init__(self, profile_name, gcode_content="", parent=None):
         super().__init__(parent)
         self.profile_name = profile_name
         self.original_gcode = gcode_content
-        self.dollar_variables_info = dollar_variables_info or {}
+        self.main_window = parent.main_window if hasattr(parent, 'main_window') else parent
         
         self.setWindowTitle(f"Edit G-Code: {profile_name}")
         self.setModal(True)
@@ -67,9 +67,10 @@ class ProfileGCodeDialog(QDialog):
         save_btn.clicked.connect(self.save_gcode_to_file)
         toolbar.addWidget(save_btn)
         
-        # G-code editor with $ variable support
+        # G-code editor with $ variable support from main_window
         self.gcode_editor = GCodeEditor(self)
-        self.gcode_editor.set_dollar_variables_info(self.dollar_variables_info)
+        dollar_vars = self.main_window.get_dollar_variable()
+        self.gcode_editor.set_dollar_variables_info(dollar_vars)
         
         if not self.original_gcode:
             self.gcode_editor.setPlaceholderText(
@@ -110,12 +111,6 @@ class ProfileGCodeDialog(QDialog):
                 color: #1d1f28;
             }
         """)
-    
-    def set_dollar_variables_info(self, dollar_variables_info):
-        """Update available $ variables information"""
-        self.dollar_variables_info = dollar_variables_info
-        if hasattr(self, 'gcode_editor'):
-            self.gcode_editor.set_dollar_variables_info(dollar_variables_info)
     
     def load_gcode(self):
         """Load G-code content into editor"""

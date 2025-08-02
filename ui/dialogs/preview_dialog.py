@@ -1,18 +1,18 @@
 """
 Preview Dialog
 
-Dialog for previewing G-code files.
+Simplified dialog for previewing G-code files.
 """
 
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QTextEdit
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QTextOption
+from PySide6.QtGui import QFont
 
 from ..widgets.themed_widgets import ThemedSplitter, ThemedLabel, PurpleButton
 
 
 class PreviewDialog(QDialog):
-    """Dialog for previewing G-code files"""
+    """Simplified dialog for previewing G-code files"""
     
     def __init__(self, filename, gcode_content, parent=None):
         super().__init__(parent)
@@ -49,7 +49,7 @@ class PreviewDialog(QDialog):
         gcode_widget.setLineWrapMode(QTextEdit.NoWrap)
         splitter.addWidget(gcode_widget)
         
-        # Right side - Toolpath preview
+        # Right side - Toolpath preview placeholder
         preview_widget = ThemedLabel()
         preview_widget.setMinimumWidth(400)
         preview_widget.setStyleSheet("QLabel { background-color: #333; border: 1px solid #666; }")

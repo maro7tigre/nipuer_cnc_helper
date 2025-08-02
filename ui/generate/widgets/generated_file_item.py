@@ -1,7 +1,7 @@
 """
 Generated File Item Widget
 
-Individual file item with dual content tracking and visual state management.
+Simplified file item that gets $ variables from main_window.
 """
 
 from PySide6.QtWidgets import QFrame, QVBoxLayout, QDialog
@@ -14,12 +14,12 @@ from ...widgets.simple_widgets import ClickableImageLabel, PlaceholderPixmap
 class GCodeEditDialog(QDialog):
     """Dialog for editing G-code with the full editor"""
     
-    def __init__(self, title, content, dollar_variables_info=None, parent=None):
+    def __init__(self, title, content, main_window=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"Edit {title}")
         self.setModal(True)
         self.resize(800, 600)
-        self.dollar_variables_info = dollar_variables_info or {}
+        self.main_window = main_window
         
         # Enable maximize/minimize buttons
         self.setWindowFlags(Qt.Dialog | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | 
@@ -68,9 +68,12 @@ class GCodeEditDialog(QDialog):
         
         layout = QVBoxLayout(self)
         
-        # G-code editor
+        # G-code editor with $ variables from main_window
         self.editor = GCodeEditor(self)
-        self.editor.set_dollar_variables_info(self.dollar_variables_info)
+        if self.main_window:
+            dollar_vars = self.main_window.get_dollar_variable()
+            self.editor.set_dollar_variables_info(dollar_vars)
+        
         self.editor.setPlainText(content)
         layout.addWidget(self.editor)
         
@@ -95,20 +98,19 @@ class GCodeEditDialog(QDialog):
 
 
 class GeneratedFileItem(QFrame):
-    """Individual file item with dual content tracking and visual state management"""
+    """Simplified file item that gets $ variables from main_window"""
     
     content_changed = Signal(str)  # Emits new content when edited
     
-    def __init__(self, name, file_type, side, dollar_variables_info=None, parent=None):
+    def __init__(self, name, file_type, side, main_window=None, parent=None):
         super().__init__(parent)
         self.name = name
         self.file_type = file_type  # 'frame', 'lock', 'hinge'
         self.side = side  # 'left', 'right'
-        self.dollar_variables_info = dollar_variables_info or {}
+        self.main_window = main_window
         
-        # Dual content tracking
-        self.auto_content = ""      # Auto-generated from parameters
-        self.manual_content = ""    # Manual/displayed content (what user sees/edits)
+        # Current content
+        self.content = ""
         
         self.setFixedSize(140, 100)
         self.setCursor(Qt.PointingHandCursor)
@@ -150,40 +152,30 @@ class GeneratedFileItem(QFrame):
         pixmap = PlaceholderPixmap.create((60, 60), icon, "#44475c", "#bdbdc0")
         self.icon_label.setPixmap(pixmap)
     
-    def set_dollar_variables_info(self, dollar_variables_info):
-        """Update $ variables information"""
-        self.dollar_variables_info = dollar_variables_info
+    def update_dollar_variables(self, dollar_variables_info):
+        """Update $ variables information - called when main_window variables change"""
+        # Nothing specific to do here since we get variables from main_window when opening editor
+        pass
     
-    def update_auto_content(self, content):
-        """Update the auto-generated content"""
-        self.auto_content = content
+    def update_content(self, content):
+        """Update the content and visual state"""
+        self.content = content
+        self.update_visual_state()
     
-    def update_manual_content(self, content):
-        """Update the manual/displayed content"""
-        self.manual_content = content
-    
-    def set_manual_content(self, content):
-        """Set manual content (from user editing)"""
-        self.manual_content = content
-    
-    def get_manual_content(self):
-        """Get the current manual content"""
-        return self.manual_content
-    
-    def get_auto_content(self):
-        """Get the auto-generated content"""
-        return self.auto_content
+    def get_content(self):
+        """Get the current content"""
+        return self.content
     
     def update_visual_state(self):
-        """Update visual state based on content comparison"""
-        if self.manual_content != self.auto_content:
-            # Red border - manual content differs from auto-generated
-            border_color = "#ff4444"
-            bg_color = "#2d1f1f"
-        else:
-            # Green border - manual content matches auto-generated
+        """Update visual state based on content availability"""
+        if self.content and self.content.strip():
+            # Green border - has content
             border_color = "#23c87b"
             bg_color = "#1f2d20"
+        else:
+            # Red border - no content
+            border_color = "#ff4444"
+            bg_color = "#2d1f1f"
         
         self.setStyleSheet(f"""
             GeneratedFileItem {{
@@ -206,23 +198,17 @@ class GeneratedFileItem(QFrame):
         """Open G-code editor dialog"""
         dialog = GCodeEditDialog(
             f"{self.side.title()} {self.name}", 
-            self.manual_content, 
-            self.dollar_variables_info,
+            self.content, 
+            self.main_window,
             self
         )
         
         if dialog.exec_() == QDialog.Accepted:
             new_content = dialog.get_content()
-            self.manual_content = new_content
+            self.content = new_content
             self.update_visual_state()
             self.content_changed.emit(new_content)
     
-    def reset_to_auto_generated(self):
-        """Reset manual content to auto-generated version"""
-        self.manual_content = self.auto_content
-        self.update_visual_state()
-        self.content_changed.emit(self.manual_content)
-    
     def has_content(self):
-        """Check if file has any manual content"""
-        return bool(self.manual_content.strip())
+        """Check if file has any content"""
+        return bool(self.content and self.content.strip())

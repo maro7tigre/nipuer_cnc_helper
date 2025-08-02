@@ -1,7 +1,7 @@
 """
 Profile Grid Widget
 
-Scrollable grid container for profile items with responsive layout.
+Simplified scrollable grid that works with main_window data management.
 """
 
 from PySide6.QtWidgets import QScrollArea, QWidget, QVBoxLayout, QGridLayout, QDialog, QMessageBox
@@ -11,18 +11,15 @@ from .profile_item import ProfileItem
 
 
 class ProfileGrid(QScrollArea):
-    """Scrollable grid container for profile items with Python styling"""
+    """Simplified profile grid that gets/sets data through main_window"""
     selection_changed = Signal(str)
-    data_modified = Signal()
     
-    def __init__(self, profile_type, dollar_variables_info=None, parent=None):
+    def __init__(self, profile_type, main_window=None, parent=None):
         super().__init__(parent)
         self.profile_type = profile_type  # "hinge" or "lock"
+        self.main_window = main_window
         self.selected_profile = None
-        self.profiles = {}  # name -> profile_data
         self.profile_items = {}  # name -> ProfileItem widget
-        self.types = {}  # Store types data
-        self.dollar_variables_info = dollar_variables_info or {}
         
         # Setup scroll area styling
         self.setWidgetResizable(True)
@@ -86,13 +83,26 @@ class ProfileGrid(QScrollArea):
         self.grid_layout.setSpacing(10)
         main_layout.addLayout(self.grid_layout)
         main_layout.addStretch()
+        
+        # Initial population
+        self.refresh_from_main_window()
     
     def set_dollar_variables_info(self, dollar_variables_info):
-        """Set available $ variables information"""
-        self.dollar_variables_info = dollar_variables_info
+        """Set available $ variables information - called when main_window variables update"""
+        # Nothing to do here since dialogs get data directly from main_window
+        pass
     
-    def populate_profiles(self):
-        """Load and display profiles"""
+    def refresh_from_main_window(self):
+        """Refresh profiles from main_window data"""
+        if not self.main_window:
+            return
+        
+        # Get data from main_window
+        if self.profile_type == "hinge":
+            profiles = self.main_window.hinges_profiles
+        else:
+            profiles = self.main_window.locks_profiles
+        
         # Clear existing items
         while self.grid_layout.count():
             item = self.grid_layout.takeAt(0)
@@ -108,7 +118,7 @@ class ProfileGrid(QScrollArea):
         
         # Add profiles
         row, col = 0, 1
-        for profile_name, profile_data in self.profiles.items():
+        for profile_name, profile_data in profiles.items():
             self.add_profile_item(profile_name, profile_data, row, col)
             col += 1
             if col > self.get_columns_count():
@@ -123,7 +133,6 @@ class ProfileGrid(QScrollArea):
         item.duplicate_requested.connect(self.duplicate_profile)
         item.delete_requested.connect(self.delete_profile)
         
-        self.profiles[name] = profile_data
         self.profile_items[name] = item
         
         if row is not None and col is not None:
@@ -171,105 +180,111 @@ class ProfileGrid(QScrollArea):
         """Create new profile"""
         from ...dialogs.profile_editor import ProfileEditor
         
-        dialog = ProfileEditor(self.profile_type, dollar_variables_info=self.dollar_variables_info)
-        dialog.load_types(self.types)  # Load available types
-        
-        # Connect type modification signal
-        dialog.type_selector.types_modified.connect(lambda: self.on_types_modified(dialog.type_selector))
+        dialog = ProfileEditor(self.profile_type, parent=self)
         
         if dialog.exec_() == QDialog.Accepted:
             profile_data = dialog.get_profile_data()
             if profile_data and profile_data.get("name"):
-                # Check if name already exists
-                if profile_data["name"] in self.profiles:
+                # Check if name already exists in main_window
+                existing_profiles = (self.main_window.hinges_profiles if self.profile_type == "hinge" 
+                                   else self.main_window.locks_profiles)
+                
+                if profile_data["name"] in existing_profiles:
                     QMessageBox.warning(self, "Name Exists", 
                                       f"A profile named '{profile_data['name']}' already exists.")
                     return
                 
-                # Add new profile
-                self.profiles[profile_data["name"]] = profile_data
-                self.populate_profiles()
-                self.data_modified.emit()
+                # Add to main_window
+                if self.profile_type == "hinge":
+                    self.main_window.update_hinge_profile(profile_data["name"], profile_data)
+                else:
+                    self.main_window.update_lock_profile(profile_data["name"], profile_data)
     
     def edit_profile(self, name):
         """Edit existing profile"""
-        if name not in self.profiles:
+        # Get current profile data from main_window
+        if self.profile_type == "hinge":
+            current_data = self.main_window.get_hinge_profile(name)
+        else:
+            current_data = self.main_window.get_lock_profile(name)
+        
+        if not current_data:
             return
         
         from ...dialogs.profile_editor import ProfileEditor
         
-        # Get current profile data
-        current_data = self.profiles[name].copy()
-        
-        dialog = ProfileEditor(self.profile_type, current_data, 
-                             dollar_variables_info=self.dollar_variables_info)
-        dialog.load_types(self.types)  # Load available types
-        
-        # Connect type modification signal
-        dialog.type_selector.types_modified.connect(lambda: self.on_types_modified(dialog.type_selector))
+        dialog = ProfileEditor(self.profile_type, current_data.copy(), parent=self)
         
         if dialog.exec_() == QDialog.Accepted:
             profile_data = dialog.get_profile_data()
             if profile_data and profile_data.get("name"):
                 # Handle name change
-                if profile_data["name"] != name and profile_data["name"] in self.profiles:
-                    QMessageBox.warning(self, "Name Exists", 
-                                      f"A profile named '{profile_data['name']}' already exists.")
-                    return
-                
-                # Update profile
                 if profile_data["name"] != name:
-                    del self.profiles[name]
-                
-                self.profiles[profile_data["name"]] = profile_data
-                self.populate_profiles()
-                self.data_modified.emit()
+                    existing_profiles = (self.main_window.hinges_profiles if self.profile_type == "hinge" 
+                                       else self.main_window.locks_profiles)
+                    
+                    if profile_data["name"] in existing_profiles:
+                        QMessageBox.warning(self, "Name Exists", 
+                                          f"A profile named '{profile_data['name']}' already exists.")
+                        return
+                    
+                    # Remove old profile and add new one
+                    if self.profile_type == "hinge":
+                        self.main_window.update_hinge_profile(name, None)  # Delete old
+                        self.main_window.update_hinge_profile(profile_data["name"], profile_data)  # Add new
+                    else:
+                        self.main_window.update_lock_profile(name, None)  # Delete old
+                        self.main_window.update_lock_profile(profile_data["name"], profile_data)  # Add new
+                else:
+                    # Update existing profile
+                    if self.profile_type == "hinge":
+                        self.main_window.update_hinge_profile(name, profile_data)
+                    else:
+                        self.main_window.update_lock_profile(name, profile_data)
     
     def duplicate_profile(self, name):
         """Duplicate existing profile"""
-        if name not in self.profiles:
+        # Get current profile data from main_window
+        if self.profile_type == "hinge":
+            current_data = self.main_window.get_hinge_profile(name)
+        else:
+            current_data = self.main_window.get_lock_profile(name)
+        
+        if not current_data:
             return
         
         from ...dialogs.profile_editor import ProfileEditor
         
         # Create copy with new name
-        copy_data = self.profiles[name].copy()
+        copy_data = current_data.copy()
         copy_data["name"] = f"{name} Copy"
         
         # Find unique name
+        existing_profiles = (self.main_window.hinges_profiles if self.profile_type == "hinge" 
+                           else self.main_window.locks_profiles)
+        
         base_name = copy_data["name"]
         counter = 1
-        while copy_data["name"] in self.profiles:
+        while copy_data["name"] in existing_profiles:
             copy_data["name"] = f"{base_name} {counter}"
             counter += 1
         
-        dialog = ProfileEditor(self.profile_type, copy_data, 
-                             dollar_variables_info=self.dollar_variables_info)
-        dialog.load_types(self.types)  # Load available types
-        
-        # Connect type modification signal
-        dialog.type_selector.types_modified.connect(lambda: self.on_types_modified(dialog.type_selector))
+        dialog = ProfileEditor(self.profile_type, copy_data, parent=self)
         
         if dialog.exec_() == QDialog.Accepted:
             profile_data = dialog.get_profile_data()
             if profile_data and profile_data.get("name"):
                 # Check if name already exists
-                if profile_data["name"] in self.profiles:
+                if profile_data["name"] in existing_profiles:
                     QMessageBox.warning(self, "Name Exists", 
                                       f"A profile named '{profile_data['name']}' already exists.")
                     return
                 
-                # Add duplicated profile
-                self.profiles[profile_data["name"]] = profile_data
-                self.populate_profiles()
-                self.data_modified.emit()
-    
-    def on_types_modified(self, type_selector):
-        """Handle when types are modified in dialog"""
-        # Update types from the selector
-        self.types = type_selector.get_types_data()
-        # Save immediately
-        self.data_modified.emit()
+                # Add duplicated profile to main_window
+                if self.profile_type == "hinge":
+                    self.main_window.update_hinge_profile(profile_data["name"], profile_data)
+                else:
+                    self.main_window.update_lock_profile(profile_data["name"], profile_data)
     
     def delete_profile(self, name):
         """Delete profile after confirmation"""
@@ -278,11 +293,11 @@ class ProfileGrid(QScrollArea):
                                    QMessageBox.Yes | QMessageBox.No)
         
         if reply == QMessageBox.Yes:
-            # Remove from data
-            if name in self.profiles:
-                del self.profiles[name]
-                self.populate_profiles()
-                self.data_modified.emit()
+            # Remove from main_window
+            if self.profile_type == "hinge":
+                self.main_window.update_hinge_profile(name, None)
+            else:
+                self.main_window.update_lock_profile(name, None)
             
             # Clear selection if deleted item was selected
             if self.selected_profile == name:
@@ -306,15 +321,13 @@ class ProfileGrid(QScrollArea):
         
         self.selection_changed.emit(name)
     
-    def get_profiles_data(self):
-        """Get all profiles data for saving"""
-        return self.profiles.copy()
-    
-    def load_profiles_data(self, profiles_dict):
-        """Load profiles from data"""
-        self.profiles = profiles_dict.copy()
-        self.populate_profiles()
-    
-    def set_types_data(self, types_dict):
-        """Set available types"""
-        self.types = types_dict.copy()
+    def set_selection(self, profile_name):
+        """Set the selected profile (called from parent)"""
+        # Clear previous selection
+        if self.selected_profile and self.selected_profile in self.profile_items:
+            self.profile_items[self.selected_profile].set_selected(False)
+        
+        # Set new selection
+        self.selected_profile = profile_name
+        if profile_name and profile_name in self.profile_items:
+            self.profile_items[profile_name].set_selected(True)

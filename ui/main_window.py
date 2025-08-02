@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget, QInputDialog, QMessageBox, QFileDialog
-from PySide6.QtCore import Qt, QSettings, QObject, pyqtSignal
+from PySide6.QtCore import Qt, QSettings, QObject, Signal
 from .profile.profile_tab import ProfileTab
 from .frame.frame_tab import FrameTab
 from .generate.generate_tab import GenerateTab
@@ -15,9 +15,9 @@ class EventManager(QObject):
     """Simple event manager for the 3 main update types"""
     
     # Event signals
-    profiles_updated = pyqtSignal()  # Profile set, types, or profiles changed
-    variables_updated = pyqtSignal()  # $variables changed
-    generated_updated = pyqtSignal()  # Generated gcodes changed
+    profiles_updated = Signal()  # Profile set, types, or profiles changed
+    variables_updated = Signal()  # $variables changed
+    generated_updated = Signal()  # Generated gcodes changed
     
     def __init__(self):
         super().__init__()
@@ -202,7 +202,7 @@ class MainWindow(QMainWindow):
         
         # Generate tab UI signals
         self.generate_tab.back_clicked.connect(lambda: self.tabs.setCurrentIndex(1))
-        self.generate_tab.generate_clicked.connect(self.generate_files)
+        self.generate_tab.generate_button.clicked.connect(self.generate_files)
     
     def closeEvent(self, event):
         """Save app configuration before closing"""

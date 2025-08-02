@@ -1,40 +1,36 @@
 """
 Profile Tab
 
-Main profile selection tab with project save/load functionality.
-Now simplified using extracted widgets.
+Simplified profile selection tab that works with centralized main_window data management.
 """
 
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QInputDialog, QMessageBox, QFileDialog
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout
 from PySide6.QtCore import Signal, Qt
-from datetime import datetime
-import json
-import os
-import shutil
 
 from ..widgets.themed_widgets import ThemedSplitter, ThemedLabel, BlueButton, PurpleButton, GreenButton
 from .widgets.profile_grid import ProfileGrid
 
 
 class ProfileTab(QWidget):
-    """Main profile selection tab with project save/load functionality"""
-    profiles_selected = Signal(str, str)  # hinge_profile, lock_profile
+    """Simplified profile selection tab that uses main_window for all data management"""
     next_clicked = Signal()
-    profiles_modified = Signal()  # Signal for when profiles are modified
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.main_window = parent
-        self.selected_hinge = None # ?
-        self.selected_lock = None # ?
-
+        self.selected_hinge = None
+        self.selected_lock = None
 
         self.setup_ui()
         self.apply_styling()
         self.connect_signals()
-        self.load_current_profiles()
+        
+        # Subscribe to main_window events
+        if self.main_window:
+            self.main_window.events.subscribe('profiles', self.on_profiles_updated)
+            self.main_window.events.subscribe('variables', self.on_variables_updated)
     
-    def apply_styling(self): # TODO: Move to theme manager
+    def apply_styling(self):
         """Apply dark theme styling"""
         self.setStyleSheet("""
             ProfileTab {
@@ -75,9 +71,9 @@ class ProfileTab(QWidget):
         splitter = ThemedSplitter(Qt.Horizontal)
         layout.addWidget(splitter, 1)
         
-        # Create hinge and lock grids
-        self.hinge_grid = ProfileGrid("hinge", self.dollar_variables_info)
-        self.lock_grid = ProfileGrid("lock", self.dollar_variables_info)
+        # Create hinge and lock grids - they get data from main_window
+        self.hinge_grid = ProfileGrid("hinge", self.main_window)
+        self.lock_grid = ProfileGrid("lock", self.main_window)
         
         splitter.addWidget(self.hinge_grid)
         splitter.addWidget(self.lock_grid)
@@ -103,31 +99,69 @@ class ProfileTab(QWidget):
         """Connect widget signals"""
         self.hinge_grid.selection_changed.connect(self.on_hinge_selected)
         self.lock_grid.selection_changed.connect(self.on_lock_selected)
-        self.hinge_grid.data_modified.connect(self.on_profiles_modified)
-        self.lock_grid.data_modified.connect(self.on_profiles_modified)
         self.next_button.clicked.connect(self.on_next_clicked)
+        
+        # Connect main_window buttons to main_window methods
+        if self.main_window:
+            self.save_project_button.clicked.connect(self.main_window.save_project)
+            self.load_project_button.clicked.connect(self.main_window.load_project)
+            self.save_button.clicked.connect(lambda: self.main_window.save_profile_set(current=False))
+            self.load_button.clicked.connect(lambda: self.main_window.load_profile_set(current=False))
+    
+    def on_profiles_updated(self):
+        """Handle profiles updated from main_window"""
+        # Refresh grids with new data
+        self.hinge_grid.refresh_from_main_window()
+        self.lock_grid.refresh_from_main_window()
+        
+        # Update selection display
+        self.update_selection_from_main_window()
+    
+    def on_variables_updated(self):
+        """Handle variables updated from main_window"""
+        # Update grids with new $ variables
+        dollar_vars = self.main_window.get_dollar_variable()
+        self.hinge_grid.set_dollar_variables_info(dollar_vars)
+        self.lock_grid.set_dollar_variables_info(dollar_vars)
+    
+    def update_selection_from_main_window(self):
+        """Update selection display from main_window state"""
+        self.selected_hinge = self.main_window.get_dollar_variable("selected_hinge")
+        self.selected_lock = self.main_window.get_dollar_variable("selected_lock")
+        
+        # Update grid selections
+        self.hinge_grid.set_selection(self.selected_hinge)
+        self.lock_grid.set_selection(self.selected_lock)
+        
+        self.update_selection_display()
     
     def on_hinge_selected(self, name):
         """Handle hinge profile selection"""
         self.selected_hinge = name if name else None
+        
+        # Update main_window
+        if self.main_window:
+            self.main_window.update_dollar_variable("selected_hinge", self.selected_hinge)
+            
+            # If both profiles selected, update main_window with profiles
+            if self.selected_hinge and self.selected_lock:
+                self.main_window.select_profiles(self.selected_hinge, self.selected_lock)
+        
         self.update_selection_display()
-        self.save_current_profiles()
-        # Emit profiles modified signal to trigger border updates
-        self.profiles_modified.emit()
     
     def on_lock_selected(self, name):
         """Handle lock profile selection"""
         self.selected_lock = name if name else None
+        
+        # Update main_window
+        if self.main_window:
+            self.main_window.update_dollar_variable("selected_lock", self.selected_lock)
+            
+            # If both profiles selected, update main_window with profiles
+            if self.selected_hinge and self.selected_lock:
+                self.main_window.select_profiles(self.selected_hinge, self.selected_lock)
+        
         self.update_selection_display()
-        self.save_current_profiles()
-        # Emit profiles modified signal to trigger border updates
-        self.profiles_modified.emit()
-    
-    def on_profiles_modified(self):
-        """Handle when profile data is modified"""
-        self.save_current_profiles()
-        # Emit signal to notify main window that profiles changed
-        self.profiles_modified.emit()
     
     def update_selection_display(self):
         """Update selection display and controls"""
@@ -142,95 +176,28 @@ class ProfileTab(QWidget):
     def on_next_clicked(self):
         """Handle next button click"""
         if self.selected_hinge and self.selected_lock:
-            self.profiles_selected.emit(self.selected_hinge, self.selected_lock)
+            # Make sure main_window has latest selections
+            if self.main_window:
+                self.main_window.select_profiles(self.selected_hinge, self.selected_lock)
             self.next_clicked.emit()
     
-    def load_current_profiles(self):
-        """Load current.json on startup"""
-        if os.path.exists(self.current_file):
-            try:
-                # Check if file is empty or invalid
-                if os.path.getsize(self.current_file) == 0:
-                    print("Current profiles file is empty, creating default")
-                    self.create_default_current()
-                    return
-                
-                with open(self.current_file, 'r') as f:
-                    content = f.read()
-                    if not content.strip():
-                        print("Current profiles file is empty, creating default")
-                        self.create_default_current()
-                        return
-                    
-                    data = json.loads(content)
-                
-                self.load_profile_data(data)
-            except json.JSONDecodeError as e:
-                print(f"Error parsing current profiles JSON: {str(e)}")
-                self.create_default_current()
-            except Exception as e:
-                print(f"Error loading current profiles: {str(e)}")
-                self.create_default_current()
-        else:
-            # Create default current.json
-            self.create_default_current()
-    
-    def create_default_current(self):
-        """Create default current.json file"""
-        default_data = {
-            "hinges": {
-                "types": {},
-                "profiles": {}
-            },
-            "locks": {
-                "types": {},
-                "profiles": {}
-            },
-            "frame_gcode": {
-                "gcode_right": "",
-                "gcode_left": ""
-            }
+    def get_app_config(self):
+        """Get tab configuration for saving"""
+        return {
+            "selected_hinge": self.selected_hinge,
+            "selected_lock": self.selected_lock
         }
+    
+    def set_app_config(self, config):
+        """Set tab configuration from loading"""
+        self.selected_hinge = config.get("selected_hinge")
+        self.selected_lock = config.get("selected_lock")
         
-        with open(self.current_file, 'w') as f:
-            json.dump(default_data, f, indent=2)
+        # Update main_window
+        if self.main_window:
+            if self.selected_hinge:
+                self.main_window.update_dollar_variable("selected_hinge", self.selected_hinge)
+            if self.selected_lock:
+                self.main_window.update_dollar_variable("selected_lock", self.selected_lock)
         
-        self.load_profile_data(default_data)
-    
-    def save_current_profiles(self):
-        """Save current state to current.json (without selected profiles)"""
-        data = self.get_current_data()
-        
-        try:
-            with open(self.current_file, 'w') as f:
-                json.dump(data, f, indent=2)
-        except Exception as e:
-            print(f"Error saving current profiles: {str(e)}")
-    
-    def get_current_data(self):
-        """Get current data including types and frame G-code (without selections)"""
-        data = {
-            "hinges": {
-                "types": self.hinge_grid.types,
-                "profiles": self.hinge_grid.get_profiles_data()
-            },
-            "locks": {
-                "types": self.lock_grid.types,
-                "profiles": self.lock_grid.get_profiles_data()
-            },
-            "frame_gcode": self._frame_gcode_data
-        }
-        
-        return data
-    
-    def save_frame_gcode_data(self, frame_gcode_data):
-        """Save frame G-code data"""
-        self._frame_gcode_data = frame_gcode_data
-        self.save_current_profiles()
-    
-    def get_frame_gcode_data(self):
-        """Get frame G-code data"""
-        return self._frame_gcode_data
-    
-    def set_main_window(self, main_window):
-        pass
+        self.update_selection_display()

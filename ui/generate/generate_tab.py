@@ -1,8 +1,7 @@
 """
 Generate Tab
 
-Complete file generation tab with dual content tracking and proper export.
-Now simplified using extracted widgets.
+Simplified file generation tab that works with centralized main_window data management.
 """
 
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QGridLayout, QFileDialog, QMessageBox
@@ -17,15 +16,13 @@ from .widgets.generated_file_item import GeneratedFileItem
 
 
 class GenerateTab(QWidget):
-    """Complete file generation tab with dual content tracking and proper export"""
+    """Simplified generate tab that gets all data from main_window"""
     back_clicked = Signal()
-    generate_clicked = Signal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.generator = None  # Will be set from main window
+        self.main_window = parent
         self.output_dir = os.path.expanduser("~/CNC/Output")
-        self.dollar_variables_info = {}  # Store $ variables info
         
         # File items organized by side and type
         self.file_items = {
@@ -36,6 +33,12 @@ class GenerateTab(QWidget):
         self.setup_ui()
         self.apply_styling()
         self.connect_signals()
+        
+        # Subscribe to main_window events
+        if self.main_window:
+            self.main_window.events.subscribe('profiles', self.on_profiles_updated)
+            self.main_window.events.subscribe('variables', self.on_variables_updated)
+            self.main_window.events.subscribe('generated', self.on_generated_updated)
     
     def apply_styling(self):
         """Apply dark theme styling"""
@@ -64,7 +67,6 @@ class GenerateTab(QWidget):
         
         # Generate button
         self.generate_button = GreenButton("Generate Files")
-        self.generate_button.clicked.connect(self.on_generate_clicked)
         toolbar_layout.addWidget(self.generate_button)
         
         # Main content area with splitter
@@ -124,7 +126,7 @@ class GenerateTab(QWidget):
         grid_layout = QGridLayout()
         group_layout.addLayout(grid_layout)
         
-        # Create file items
+        # Create file items - they get $ variables from main_window
         file_types = [
             ('frame', f'{title.split()[0]} Frame'),
             ('lock', 'Lock'),
@@ -132,7 +134,7 @@ class GenerateTab(QWidget):
         ]
         
         for i, (file_type, display_name) in enumerate(file_types):
-            file_item = GeneratedFileItem(display_name, file_type, side, self.dollar_variables_info)
+            file_item = GeneratedFileItem(display_name, file_type, side, self.main_window)
             file_item.content_changed.connect(
                 lambda content, s=side, ft=file_type: self.on_file_content_changed(s, ft, content)
             )
@@ -149,64 +151,103 @@ class GenerateTab(QWidget):
         """Connect widget signals"""
         pass  # Signals are connected in setup_ui
     
-    def set_generator(self, generator):
-        """Set the G-code generator instance"""
-        self.generator = generator
-        if generator:
-            generator.files_updated.connect(self.on_files_updated)
+    def on_profiles_updated(self):
+        """Handle profiles updated from main_window"""
+        # Regenerate files when profiles change
+        self.generate_files()
     
-    def set_dollar_variables_info(self, dollar_variables_info):
-        """Update $ variables information for all file items"""
-        self.dollar_variables_info = dollar_variables_info
-        # Update all file items
+    def on_variables_updated(self):
+        """Handle variables updated from main_window"""
+        # Update $ variables in all file items and regenerate
+        dollar_vars = self.main_window.get_dollar_variable()
         for side in ['left', 'right']:
             for file_type in ['frame', 'lock', 'hinge']:
-                if side in self.file_items and file_type in self.file_items[side]:
-                    self.file_items[side][file_type].set_dollar_variables_info(dollar_variables_info)
+                self.file_items[side][file_type].update_dollar_variables(dollar_vars)
+        
+        # Regenerate files when variables change
+        self.generate_files()
     
-    def update_dollar_variables_in_items(self, dollar_variables_info):
-        """Update $ variables in all file items (called from main window)"""
-        self.set_dollar_variables_info(dollar_variables_info)
+    def on_generated_updated(self):
+        """Handle generated updated from main_window"""
+        # Update file items with new generated content
+        self.update_file_items_from_main_window()
     
-    def on_files_updated(self, files_data):
-        """Handle updated files from generator - dual content tracking"""
+    def update_file_items_from_main_window(self):
+        """Update file items with content from main_window"""
+        if not self.main_window:
+            return
+        
+        # Get generated gcodes from main_window
+        generated_gcodes = {
+            'hinge_gcode': self.main_window.get_generated_gcode('hinge_gcode'),
+            'lock_gcode': self.main_window.get_generated_gcode('lock_gcode'),
+            'right_gcode': self.main_window.get_generated_gcode('right_gcode'),
+            'left_gcode': self.main_window.get_generated_gcode('left_gcode')
+        }
+        
+        # Update file items
         for side in ['left', 'right']:
             for file_type in ['frame', 'lock', 'hinge']:
-                if side in files_data and file_type in files_data[side]:
-                    file_data = files_data[side][file_type]
-                    auto_content = file_data.get('original', '')  # Auto-generated content
-                    manual_content = file_data.get('content', '')  # Manual/displayed content
-                    
-                    file_item = self.file_items[side][file_type]
-                    
-                    # Update both auto and manual content
-                    file_item.update_auto_content(auto_content)
-                    file_item.update_manual_content(manual_content)
-                    
-                    # Update visual state
-                    file_item.update_visual_state()
+                file_item = self.file_items[side][file_type]
+                
+                # Determine which gcode to use
+                if file_type == 'frame':
+                    if side == 'left':
+                        content = generated_gcodes.get('left_gcode', '')
+                    else:
+                        content = generated_gcodes.get('right_gcode', '')
+                elif file_type == 'hinge':
+                    content = generated_gcodes.get('hinge_gcode', '')
+                elif file_type == 'lock':
+                    content = generated_gcodes.get('lock_gcode', '')
+                else:
+                    content = ''
+                
+                # Update file item
+                file_item.update_content(content)
+    
+    def generate_files(self):
+        """Generate files from main_window data"""
+        if not self.main_window:
+            return
+        
+        # Process gcodes in main_window to get latest processed versions
+        self.main_window.process_gcodes()
+        
+        # Copy processed to generated
+        self.main_window.copy_to_generated()
+        
+        print("Files generated from main_window data")
     
     def on_file_content_changed(self, side, file_type, new_content):
         """Handle manual file content changes"""
-        if self.generator:
-            self.generator.update_file_content(side, file_type, new_content)
-            
+        if not self.main_window:
+            return
+        
+        # Determine which gcode to update in main_window
+        if file_type == 'frame':
+            if side == 'left':
+                gcode_key = 'left_gcode'
+            else:
+                gcode_key = 'right_gcode'
+        elif file_type == 'hinge':
+            gcode_key = 'hinge_gcode'
+        elif file_type == 'lock':
+            gcode_key = 'lock_gcode'
+        else:
+            return
+        
+        # Update main_window generated gcode
+        self.main_window.update_generated_gcode(gcode_key, new_content)
+        
         # Update file item state
         file_item = self.file_items[side][file_type]
-        file_item.set_manual_content(new_content)
-        file_item.update_visual_state()
-    
-    def on_generate_clicked(self):
-        """Handle generate button click - regenerate all files"""
-        # Emit signal to trigger main window generation
-        self.generate_clicked.emit()
-        
-        # All file items will be updated via on_files_updated signal
+        file_item.update_content(new_content)
     
     def export_files(self):
         """Export all files to the output directory with proper cnc structure"""
-        if not self.generator:
-            QMessageBox.warning(self, "No Generator", "Generator not initialized.")
+        if not self.main_window:
+            QMessageBox.warning(self, "No Data", "No main window data available.")
             return
         
         # Check if we have any files to export
@@ -244,7 +285,7 @@ class GenerateTab(QWidget):
                 
                 for file_type in ['frame', 'lock', 'hinge']:
                     file_item = self.file_items[side_en][file_type]
-                    content = file_item.get_manual_content()
+                    content = file_item.get_content()
                     
                     if content:
                         # Convert line endings to Windows format
@@ -291,15 +332,13 @@ class GenerateTab(QWidget):
             self.output_dir = dir_path
             self.output_path.setText(dir_path)
     
-    def set_profiles(self, hinge_profile, lock_profile):
-        """Set selected profiles (called from main window)"""
-        # This will be used when connecting to the generator
-        pass
+    def get_app_config(self):
+        """Get tab configuration for saving"""
+        return {
+            "output_dir": self.output_dir
+        }
     
-    def set_frame_data(self, frame_data):
-        """Set frame configuration data (called from main window)"""
-        # This will be used when connecting to the generator
-        pass
-    
-    def set_main_window(self, main_window):
-        pass
+    def set_app_config(self, config):
+        """Set tab configuration from loading"""
+        self.output_dir = config.get("output_dir", self.output_dir)
+        self.output_path.setText(self.output_dir)

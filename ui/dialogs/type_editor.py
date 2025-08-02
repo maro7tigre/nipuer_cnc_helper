@@ -1,12 +1,12 @@
 """
 Type Editor Dialog
 
-Type editor dialog with $ variables support and name validation.
+Simplified type editor that works with centralized main_window data management.
 """
 
 from PySide6.QtWidgets import QDialog, QWidget, QHBoxLayout, QVBoxLayout, QFileDialog, QMessageBox, QDialogButtonBox
-from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QFont, QPixmap, QPainter, QColor
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 import os
 
 from ..widgets.themed_widgets import ThemedLabel, ThemedLineEdit, ThemedSplitter, PurpleButton
@@ -15,15 +15,15 @@ from ..gcode_ide import GCodeEditor
 
 
 class TypeEditor(QDialog):
-    """Type editor dialog with $ variables support and name validation"""
+    """Simplified type editor that integrates with main_window data management"""
     
-    def __init__(self, profile_type, type_data=None, parent=None, dollar_variables_info=None):
+    def __init__(self, profile_type, type_data=None, parent=None):
         super().__init__(parent)
         self.profile_type = profile_type
         self.type_data = type_data or {}
+        self.main_window = parent.main_window if hasattr(parent, 'main_window') else parent
         self.image_path = type_data.get("image") if type_data else None
         self.preview_path = type_data.get("preview") if type_data else None
-        self.dollar_variables_info = dollar_variables_info or {}
         
         self.setWindowTitle(f"{'Edit' if type_data else 'New'} {profile_type.capitalize()} Type")
         self.setModal(True)
@@ -104,9 +104,10 @@ class TypeEditor(QDialog):
         save_btn.clicked.connect(self.save_gcode)
         gcode_header.addWidget(save_btn)
         
-        # Use the new G-code editor with $ variables support
+        # G-code editor with $ variables support from main_window
         self.gcode_edit = GCodeEditor(self)
-        self.gcode_edit.set_dollar_variables_info(self.dollar_variables_info)
+        dollar_vars = self.main_window.get_dollar_variable()
+        self.gcode_edit.set_dollar_variables_info(dollar_vars)
         self.gcode_edit.setPlaceholderText(
             "Enter G-code with variables:\n"
             "L variables: {L1}, {L2:default}\n"

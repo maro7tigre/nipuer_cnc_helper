@@ -1,7 +1,7 @@
 """
 Type Selector Widget
 
-Horizontal scrollable type selector with add button functionality.
+Simplified horizontal scrollable type selector that works with main_window.
 """
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QDialog, QMessageBox
@@ -11,17 +11,18 @@ from .type_item import TypeItem
 
 
 class TypeSelector(QWidget):
-    """Horizontal scrollable type selector with Python styling"""
+    """Simplified type selector that gets/sets data through main_window or direct data"""
     type_selected = Signal(dict)
     types_modified = Signal()
     
     def __init__(self, profile_type, dollar_variables_info=None, parent=None):
         super().__init__(parent)
         self.profile_type = profile_type  # "hinge" or "lock"
+        self.dollar_variables_info = dollar_variables_info or {}
+        self.main_window = getattr(parent, 'main_window', None) if parent else None
         self.selected_type = None
         self.types = {}  # name -> type_data
         self.type_items = {}  # name -> TypeItem widget
-        self.dollar_variables_info = dollar_variables_info or {}
         
         self.setup_ui()
     
@@ -55,10 +56,6 @@ class TypeSelector(QWidget):
         # Add initial "+" button
         self.add_type_button()
     
-    def set_dollar_variables_info(self, dollar_variables_info):
-        """Set available $ variables information"""
-        self.dollar_variables_info = dollar_variables_info
-    
     def add_type_button(self):
         """Add the '+' button"""
         add_item = TypeItem("Add", is_add_button=True)
@@ -66,7 +63,7 @@ class TypeSelector(QWidget):
         self.items_layout.insertWidget(0, add_item)
     
     def load_types(self, types_data):
-        """Load types from data"""
+        """Load types from data (called from dialog)"""
         # Clear existing (except add button)
         for item in list(self.type_items.values()):
             item.deleteLater()
@@ -111,7 +108,7 @@ class TypeSelector(QWidget):
         """Create new type"""
         from ...dialogs.type_editor import TypeEditor
         
-        dialog = TypeEditor(self.profile_type, dollar_variables_info=self.dollar_variables_info)
+        dialog = TypeEditor(self.profile_type, parent=self)
         if dialog.exec_() == QDialog.Accepted:
             type_data = dialog.get_type_data()
             self.add_type_item(type_data)
@@ -122,8 +119,7 @@ class TypeSelector(QWidget):
         if name in self.types:
             from ...dialogs.type_editor import TypeEditor
             
-            dialog = TypeEditor(self.profile_type, self.types[name], 
-                              dollar_variables_info=self.dollar_variables_info)
+            dialog = TypeEditor(self.profile_type, self.types[name], parent=self)
             if dialog.exec_() == QDialog.Accepted:
                 # Update type data
                 new_data = dialog.get_type_data()
@@ -144,8 +140,7 @@ class TypeSelector(QWidget):
             copy_data = self.types[name].copy()
             copy_data["name"] = f"{name} Copy"
             
-            dialog = TypeEditor(self.profile_type, copy_data, 
-                              dollar_variables_info=self.dollar_variables_info)
+            dialog = TypeEditor(self.profile_type, copy_data, parent=self)
             if dialog.exec_() == QDialog.Accepted:
                 type_data = dialog.get_type_data()
                 self.add_type_item(type_data)
